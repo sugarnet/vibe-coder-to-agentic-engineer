@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Arena FPS - 3D Shooter</title>
+    <link rel="stylesheet" href="/src/style.css">
+</head>
+<body>
+    <div id="ui">
+        <div id="hud">
+            <div class="hud-item" id="health-container">
+                <span class="label">HEALTH</span>
+                <div class="bar-bg">
+                    <div id="health-bar" style="width: 100%;"></div>
+                </div>
+            </div>
+            <div class="hud-item" id="round-container">
+                <span class="label">ROUND</span>
+                <span id="round-value">1</span>
+                <div id="wins-display">
+                    <span id="player-wins">P: 0</span> | <span id="ai-wins">AI: 0</span>
+                </div>
+            </div>
+            <div class="hud-item" id="score-container">
+                <span class="label">SCORE</span>
+                <span id="score-value">0</span>
+            </div>
+        </div>
+        <div id="crosshair"></div>
+        <div id="overlay" class="hidden">
+            <div id="message-container">
+                <h1 id="status-message">GAME OVER</h1>
+                <button id="restart-btn">RESTART</button>
+            </div>
+        </div>
+        <div id="instructions">
+            <p>ARROWS to Move & Turn | SPACE to Shoot</p>
+        </div>
+    </div>
+    <canvas id="game-canvas"></canvas>
+    <script type="module" src="/src/main.js"></script>
+</body>
+</html>
