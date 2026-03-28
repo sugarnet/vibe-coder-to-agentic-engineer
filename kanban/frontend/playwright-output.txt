@@ -1,0 +1,38 @@
+
+Running 1 test using 1 worker
+
+[1A[2K[1/1] [chromium] › e2e/delete-card.spec.ts:3:5 › delete card button should remove card
+[1A[2K[chromium] › e2e/delete-card.spec.ts:3:5 › delete card button should remove card
+Delete button found: [33m1[39m
+
+[1A[2K  1) [chromium] › e2e/delete-card.spec.ts:3:5 › delete card button should remove card ──────────────
+
+    Error: [2mexpect([22m[31mlocator[39m[2m).not.[22mtoBeVisible[2m([22m[2m)[22m failed
+
+    Locator:  locator('text=Diseñar esquema')
+    Expected: not visible
+    Received: visible
+    Timeout:  5000ms
+
+    Call log:
+    [2m  - Expect "not toBeVisible" with timeout 5000ms[22m
+    [2m  - waiting for locator('text=Diseñar esquema')[22m
+    [2m    8 × locator resolved to <h4 class="text-sm font-semibold text-[#032147]">Diseñar esquema</h4>[22m
+    [2m      - unexpected value "visible"[22m
+
+
+      17 |
+      18 |   // Verify card is deleted
+    > 19 |   await expect(page.locator("text=Diseñar esquema")).not.toBeVisible();
+         |                                                          ^
+      20 | });
+      21 |
+        at /home/diego/Documentos/workspace/ai/vibe-coder-to-agentic-engineer/kanban/frontend/e2e/delete-card.spec.ts:19:58
+
+    Error Context: test-results/delete-card-delete-card-button-should-remove-card-chromium/error-context.md
+
+
+[1A[2K  1 failed
+    [chromium] › e2e/delete-card.spec.ts:3:5 › delete card button should remove card ───────────────
+
+[36m  Serving HTML report at http://localhost:9323. Press Ctrl+C to quit.[39m
