@@ -1,0 +1,64 @@
+@import "tailwindcss";
+
+:root {
+  --background: #07090c;
+  --foreground: #f5f7ff;
+  --obsidian: #07090c;
+  --graphite: #10141b;
+  --fog: #b5bccd;
+  --edge: #6af0ff;
+  --ember: #ffb86b;
+  --card: rgba(255, 255, 255, 0.04);
+  --stroke: rgba(255, 255, 255, 0.1);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-obsidian: var(--obsidian);
+  --color-graphite: var(--graphite);
+  --color-fog: var(--fog);
+  --color-edge: var(--edge);
+  --color-ember: var(--ember);
+  --color-card: var(--card);
+  --color-stroke: var(--stroke);
+  --font-sans: var(--font-space-grotesk);
+  --font-mono: var(--font-jetbrains-mono);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  background: radial-gradient(circle at top, #111827 0%, #07090c 55%);
+  color: var(--foreground);
+  font-family: var(--font-space-grotesk), "Space Grotesk", "Helvetica Neue",
+    Arial, sans-serif;
+  min-height: 100vh;
+}
+
+.bg-obsidian {
+  background-color: var(--obsidian);
+}
+
+.bg-glow {
+  background: radial-gradient(circle, rgba(106, 240, 255, 0.6), transparent 70%);
+}
+
+.bg-radial-fade {
+  background: radial-gradient(circle at 30% 20%, rgba(106, 240, 255, 0.15), transparent 55%),
+    radial-gradient(circle at 70% 30%, rgba(255, 184, 107, 0.12), transparent 60%),
+    radial-gradient(circle at 30% 80%, rgba(110, 114, 255, 0.18), transparent 55%);
+}
+
+.bg-grid {
+  background-image: linear-gradient(rgba(255, 255, 255, 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.04) 1px, transparent 1px);
+  background-size: 48px 48px;
+}
+
+::selection {
+  background: rgba(106, 240, 255, 0.3);
+  color: #f8fbff;
+}
