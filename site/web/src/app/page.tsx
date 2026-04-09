@@ -80,6 +80,8 @@ const certifications = [
   "Angular & Spring Boot: Creando web app full stack",
 ];
 
+import ChatTwin from "@/components/ChatTwin";
+
 export default function Home() {
   return (
     <div className="min-h-screen bg-obsidian text-white">
@@ -328,6 +330,7 @@ export default function Home() {
             </div>
           </section>
         </main>
+        <ChatTwin />
       </div>
     </div>
   );

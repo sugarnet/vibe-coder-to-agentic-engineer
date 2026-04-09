@@ -3,10 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
-    "lint": "eslint"
+    "dev": "./node_modules/.bin/next dev",
+    "build": "./node_modules/.bin/next build",
+    "start": "./node_modules/.bin/next start",
+    "lint": "./node_modules/.bin/eslint"
   },
   "dependencies": {
     "next": "16.2.2",
@@ -20,6 +20,7 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.2.2",
+    "napi-postinstall": "^0.3.0",
     "tailwindcss": "^4",
     "typescript": "^5"
   }
