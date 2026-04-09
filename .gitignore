@@ -1,0 +1,19 @@
+# Dependencias
+**/node_modules/
+
+# Next.js y builds
+**/.next/
+**/out/
+**/build/
+**/dist/
+
+# Cobertura y reportes
+**/coverage/
+**/playwright-report/
+**/test-results/
+
+# Logs y archivos del sistema
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.DS_Store
