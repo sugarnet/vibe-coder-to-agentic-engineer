@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useCallback } from "react";
 import {
   DndContext,
   DragOverlay,
@@ -13,15 +13,17 @@ import {
 } from "@dnd-kit/core";
 import { KanbanColumn } from "@/components/KanbanColumn";
 import { KanbanCardPreview } from "@/components/KanbanCardPreview";
-import { createId, initialData, moveCard, type BoardData } from "@/lib/kanban";
+import { useBoard } from "@/lib/useBoard";
+import type { BoardData } from "@/lib/kanban";
 
 type KanbanBoardProps = {
   onLogout?: () => void;
 };
 
 export const KanbanBoard = ({ onLogout }: KanbanBoardProps) => {
-  const [board, setBoard] = useState<BoardData>(() => initialData);
+  const { board, isLoading, error, addCard, updateCard, deleteCard, renameColumn, moveCard: moveBoardCard, retry } = useBoard();
   const [activeCardId, setActiveCardId] = useState<string | null>(null);
+  const [delayedError, setDelayedError] = useState<string | null>(null);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -29,76 +31,128 @@ export const KanbanBoard = ({ onLogout }: KanbanBoardProps) => {
     })
   );
 
-  const cardsById = useMemo(() => board.cards, [board.cards]);
+  const cardsById = useMemo(() => board?.cards || {}, [board?.cards]);
+
+  // Show error in a dismissible way
+  const displayedError = delayedError || error;
 
   const handleDragStart = (event: DragStartEvent) => {
     setActiveCardId(event.active.id as string);
   };
 
-  const handleDragEnd = (event: DragEndEvent) => {
-    const { active, over } = event;
-    setActiveCardId(null);
+  const handleDragEnd = useCallback(
+    (event: DragEndEvent) => {
+      const { active, over } = event;
+      setActiveCardId(null);
 
-    if (!over || active.id === over.id) {
-      return;
-    }
+      if (!over || active.id === over.id || !board) {
+        return;
+      }
 
-    setBoard((prev) => ({
-      ...prev,
-      columns: moveCard(prev.columns, active.id as string, over.id as string),
-    }));
-  };
+      // Find which column the card is being dropped into
+      const cardId = active.id as string;
+      const currentColumnId = board.columns.find((col) =>
+        col.cardIds.includes(cardId)
+      )?.id;
+      const targetColumnId = over.id as string;
+      const targetColumn = board.columns.find((col) => col.id === targetColumnId);
 
-  const handleRenameColumn = (columnId: string, title: string) => {
-    setBoard((prev) => ({
-      ...prev,
-      columns: prev.columns.map((column) =>
-        column.id === columnId ? { ...column, title } : column
-      ),
-    }));
-  };
+      // Determine if we're dropping on a card or a column
+      const dropTarget = board.columns.find(
+        (col) => col.id === targetColumnId || col.cardIds.includes(targetColumnId as string)
+      );
 
-  const handleAddCard = (columnId: string, title: string, details: string) => {
-    const id = createId("card");
-    setBoard((prev) => ({
-      ...prev,
-      cards: {
-        ...prev.cards,
-        [id]: { id, title, details: details || "No details yet." },
-      },
-      columns: prev.columns.map((column) =>
-        column.id === columnId
-          ? { ...column, cardIds: [...column.cardIds, id] }
-          : column
-      ),
-    }));
-  };
+      if (!currentColumnId || !dropTarget) return;
 
-  const handleDeleteCard = (columnId: string, cardId: string) => {
-    setBoard((prev) => {
-      return {
-        ...prev,
-        cards: Object.fromEntries(
-          Object.entries(prev.cards).filter(([id]) => id !== cardId)
-        ),
-        columns: prev.columns.map((column) =>
-          column.id === columnId
-            ? {
-                ...column,
-                cardIds: column.cardIds.filter((id) => id !== cardId),
-              }
-            : column
-        ),
-      };
-    });
-  };
+      moveBoardCard(cardId, currentColumnId, dropTarget.id).catch(() => {
+        setDelayedError("Failed to move card");
+        setTimeout(() => setDelayedError(null), 4000);
+      });
+    },
+    [board, moveBoardCard]
+  );
+
+  const handleRenameColumn = useCallback(
+    (columnId: string, title: string) => {
+      renameColumn(columnId, title).catch(() => {
+        setDelayedError("Failed to rename column");
+        setTimeout(() => setDelayedError(null), 4000);
+      });
+    },
+    [renameColumn]
+  );
+
+  const handleAddCard = useCallback(
+    (columnId: string, title: string, details: string) => {
+      addCard(columnId, title, details || "No details yet.").catch(() => {
+        setDelayedError("Failed to add card");
+        setTimeout(() => setDelayedError(null), 4000);
+      });
+    },
+    [addCard]
+  );
+
+  const handleDeleteCard = useCallback(
+    (columnId: string, cardId: string) => {
+      deleteCard(cardId).catch(() => {
+        setDelayedError("Failed to delete card");
+        setTimeout(() => setDelayedError(null), 4000);
+      });
+    },
+    [deleteCard]
+  );
 
   const activeCard = activeCardId ? cardsById[activeCardId] : null;
+
+  // Show loading state
+  if (isLoading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-[var(--surface)] to-white">
+        <div className="text-center">
+          <div className="mb-4 h-12 w-12 animate-spin rounded-full border-4 border-[var(--stroke)] border-t-[var(--primary-blue)]"></div>
+          <p className="text-[var(--gray-text)]">Loading your board...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Show error state
+  if (error && !board) {
+    return (
+      <div className="relative overflow-hidden">
+        <main className="relative mx-auto flex min-h-screen max-w-[1500px] flex-col items-center justify-center gap-4 px-6">
+          <div className="rounded-2xl border border-red-200 bg-red-50 p-8 text-center">
+            <h2 className="text-lg font-semibold text-red-900">Failed to load board</h2>
+            <p className="mt-2 text-sm text-red-700">{error}</p>
+            <button
+              onClick={retry}
+              className="mt-4 rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-red-700"
+            >
+              Try again
+            </button>
+          </div>
+        </main>
+      </div>
+    );
+  }
+
+  if (!board) {
+    return null;
+  }
 
   return (
     <div className="relative overflow-hidden">
       <div className="pointer-events-none absolute left-0 top-0 h-[420px] w-[420px] -translate-x-1/3 -translate-y-1/3 rounded-full bg-[radial-gradient(circle,_rgba(32,157,215,0.25)_0%,_rgba(32,157,215,0.05)_55%,_transparent_70%)]" />
       <div className="pointer-events-none absolute bottom-0 right-0 h-[520px] w-[520px] translate-x-1/4 translate-y-1/4 rounded-full bg-[radial-gradient(circle,_rgba(117,57,145,0.18)_0%,_rgba(117,57,145,0.05)_55%,_transparent_75%)]" />
+
+      {displayedError && (
+        <div className="fixed top-4 right-4 z-50 flex items-center gap-3 rounded-lg border border-yellow-200 bg-yellow-50 px-4 py-3 text-sm text-yellow-800">
+          <svg className="h-5 w-5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+            <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+          </svg>
+          {displayedError}
+        </div>
+      )}
 
       <main className="relative mx-auto flex min-h-screen max-w-[1500px] flex-col gap-10 px-6 pb-16 pt-12">
         <header className="flex flex-col gap-6 rounded-[32px] border border-[var(--stroke)] bg-white/80 p-8 shadow-[var(--shadow)] backdrop-blur">
