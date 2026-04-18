@@ -1,38 +1,5 @@
-#!/bin/bash#!/bin/bash
+#!/bin/bash
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-# fi#     docker rmi kanban-api || true#     echo "🗑️  Removing image..."# if docker images | grep -q kanban-api; then# Optional: Remove image (comment out if you want to keep it)fi    echo "ℹ️  Container is not running"else    echo "✅ Container stopped and removed"        docker rm "$CONTAINER_NAME" || true    echo "🗑️  Removing container..."        docker stop "$CONTAINER_NAME" || true    echo "⏹️  Stopping container..."if docker ps -a | grep -q "$CONTAINER_NAME"; then# Check if container existsfi    exit 1    echo "❌ Docker is not installed."if ! command -v docker &> /dev/null; then# Check if Docker is installedecho "🛑 Stopping Kanban API..."CONTAINER_NAME="kanban-api"# This script stops the Docker container# Project Management MVP - Stop Script for Linux/Mac
 # Project Management MVP - Start Script for Linux/Mac
 # This script builds and starts the Docker container
 
@@ -48,6 +15,44 @@ echo "🚀 Starting Kanban API..."
 # Check if Docker is installed
 if ! command -v docker &> /dev/null; then
     echo "❌ Docker is not installed. Please install Docker first."
+    exit 1
+fi
+
+# Stop and remove existing container if running
+if docker ps -a | grep -q "$CONTAINER_NAME"; then
+    echo "🛑 Stopping existing container..."
+    docker stop "$CONTAINER_NAME" || true
+    docker rm "$CONTAINER_NAME" || true
+fi
+
+# Build the Docker image
+echo "🔨 Building Docker image..."
+cd "$PROJECT_ROOT"
+docker build -t "$IMAGE_NAME" .
+
+# Start the container
+echo "🏃 Starting container on port $PORT..."
+docker run -d \
+    --name "$CONTAINER_NAME" \
+    -p "$PORT:$PORT" \
+    --env-file .env \
+    "$IMAGE_NAME" \
+    uvicorn main:app --host 0.0.0.0 --port $PORT
+
+# Wait for the service to be ready
+echo "⏳ Waiting for service to be ready..."
+for i in {1..30}; do
+    if curl -s "http://localhost:$PORT/api/health" > /dev/null 2>&1; then
+        echo "✅ Kanban API is running at http://localhost:$PORT"
+        echo "📖 API Documentation: http://localhost:$PORT/docs"
+        exit 0
+    fi
+    sleep 1
+done
+
+echo "❌ Service failed to start within 30 seconds"
+echo "📋 Check logs with: docker logs $CONTAINER_NAME"
+exit 1
     exit 1
 fi
 

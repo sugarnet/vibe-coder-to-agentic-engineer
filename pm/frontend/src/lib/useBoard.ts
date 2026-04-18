@@ -5,7 +5,11 @@
 
 import { useCallback, useEffect, useState } from "react";
 import * as api from "@/lib/api";
-import { type BoardData, type Column as LocalColumn, type Card as LocalCard } from "@/lib/kanban";
+import {
+  type BoardData,
+  type Column as LocalColumn,
+  type Card as LocalCard,
+} from "@/lib/kanban";
 
 export type UseBoard = {
   board: BoardData | null;
@@ -15,7 +19,11 @@ export type UseBoard = {
   updateCard: (cardId: string, title: string, details: string) => Promise<void>;
   deleteCard: (cardId: string) => Promise<void>;
   renameColumn: (columnId: string, title: string) => Promise<void>;
-  moveCard: (cardId: string, fromColumnId: string, toColumnId: string) => Promise<void>;
+  moveCard: (
+    cardId: string,
+    fromColumnId: string,
+    toColumnId: string,
+  ) => Promise<void>;
   retry: () => Promise<void>;
 };
 
@@ -108,7 +116,9 @@ export const useBoard = (): UseBoard => {
           ...prev,
           cards: { ...prev.cards, [optimisticId]: optimisticCard },
           columns: prev.columns.map((col) =>
-            col.id === columnId ? { ...col, cardIds: [...col.cardIds, optimisticId] } : col
+            col.id === columnId
+              ? { ...col, cardIds: [...col.cardIds, optimisticId] }
+              : col,
           ),
         };
       });
@@ -139,10 +149,10 @@ export const useBoard = (): UseBoard => {
                 ? {
                     ...col,
                     cardIds: col.cardIds.map((id) =>
-                      id === optimisticId ? apiCard.id.toString() : id
+                      id === optimisticId ? apiCard.id.toString() : id,
                     ),
                   }
-                : col
+                : col,
             ),
           };
         });
@@ -158,18 +168,22 @@ export const useBoard = (): UseBoard => {
             cards: newCards,
             columns: prev.columns.map((col) =>
               col.id === columnId
-                ? { ...col, cardIds: col.cardIds.filter((id) => id !== optimisticId) }
-                : col
+                ? {
+                    ...col,
+                    cardIds: col.cardIds.filter((id) => id !== optimisticId),
+                  }
+                : col,
             ),
           };
         });
 
-        const message = err instanceof Error ? err.message : "Failed to add card";
+        const message =
+          err instanceof Error ? err.message : "Failed to add card";
         setError(message);
         throw err;
       }
     },
-    [board]
+    [board],
   );
 
   const updateCard = useCallback(
@@ -203,19 +217,22 @@ export const useBoard = (): UseBoard => {
           };
         });
 
-        const message = err instanceof Error ? err.message : "Failed to update card";
+        const message =
+          err instanceof Error ? err.message : "Failed to update card";
         setError(message);
         throw err;
       }
     },
-    [board]
+    [board],
   );
 
   const deleteCard = useCallback(
     async (cardId: string) => {
       if (!board) return;
 
-      const columnId = board.columns.find((col) => col.cardIds.includes(cardId))?.id;
+      const columnId = board.columns.find((col) =>
+        col.cardIds.includes(cardId),
+      )?.id;
       if (!columnId) return;
 
       // Optimistic update
@@ -230,7 +247,7 @@ export const useBoard = (): UseBoard => {
           columns: prev.columns.map((col) =>
             col.id === columnId
               ? { ...col, cardIds: col.cardIds.filter((id) => id !== cardId) }
-              : col
+              : col,
           ),
         };
       });
@@ -241,12 +258,13 @@ export const useBoard = (): UseBoard => {
         // Revert optimistic update
         await loadBoard();
 
-        const message = err instanceof Error ? err.message : "Failed to delete card";
+        const message =
+          err instanceof Error ? err.message : "Failed to delete card";
         setError(message);
         throw err;
       }
     },
-    [board, loadBoard]
+    [board, loadBoard],
   );
 
   const renameColumn = useCallback(
@@ -262,13 +280,29 @@ export const useBoard = (): UseBoard => {
         return {
           ...prev,
           columns: prev.columns.map((col) =>
-            col.id === columnId ? { ...col, title } : col
+            col.id === columnId ? { ...col, title } : col,
           ),
         };
       });
 
       try {
-        await api.updateColumn(toApiColumnId(columnId), { title });
+        // Send all column and card positions to backend
+        const updates: api.BoardUpdate = {
+          columns: board.columns.map((col, idx) => ({
+            id: toApiColumnId(col.id),
+            title: col.id === columnId ? title : col.title,
+            position: idx,
+          })),
+          cards: board.columns.flatMap((col) =>
+            col.cardIds.map((id, idx) => ({
+              id: toApiCardId(id),
+              column_id: toApiColumnId(col.id),
+              position: idx,
+            })),
+          ),
+        };
+
+        await api.updateBoard(updates);
       } catch (err) {
         // Revert optimistic update
         setBoard((prev) => {
@@ -276,17 +310,18 @@ export const useBoard = (): UseBoard => {
           return {
             ...prev,
             columns: prev.columns.map((col) =>
-              col.id === columnId ? oldColumn : col
+              col.id === columnId ? oldColumn : col,
             ),
           };
         });
 
-        const message = err instanceof Error ? err.message : "Failed to rename column";
+        const message =
+          err instanceof Error ? err.message : "Failed to rename column";
         setError(message);
         throw err;
       }
     },
-    [board]
+    [board],
   );
 
   const moveCard = useCallback(
@@ -295,33 +330,59 @@ export const useBoard = (): UseBoard => {
 
       const backupBoard = board;
 
-      // Optimistic update - move card to new column
+      // Calculate the expected board state after the move
+      const expectedColumns = board.columns.map((col) => {
+        if (col.id === fromColumnId) {
+          // Remove card from source column
+          return {
+            ...col,
+            cardIds: col.cardIds.filter((id) => id !== cardId),
+          };
+        }
+        if (col.id === toColumnId) {
+          // Add card to destination column at the end
+          return {
+            ...col,
+            cardIds: [...col.cardIds, cardId],
+          };
+        }
+        return col;
+      });
+
+      // Optimistic update - move card to new column and recalculate positions
       setBoard((prev) => {
         if (!prev) return prev;
         return {
           ...prev,
-          columns: prev.columns.map((col) => {
-            if (col.id === fromColumnId) {
-              return { ...col, cardIds: col.cardIds.filter((id) => id !== cardId) };
-            }
-            if (col.id === toColumnId) {
-              return { ...col, cardIds: [...col.cardIds, cardId] };
-            }
-            return col;
-          }),
+          columns: expectedColumns,
         };
       });
 
       try {
-        // Send all card positions to backend
-        const updates: api.BoardUpdate = {
-          cards: board.columns.flatMap((col) =>
-            col.cardIds.map((id, idx) => ({
+        // Send all column and card positions to backend
+        // Only include cards with valid numeric IDs (exclude optimistic temp IDs)
+        const validCards = expectedColumns.flatMap((col) =>
+          col.cardIds
+            .filter((id) => !id.startsWith("temp-"))
+            .map((id, idx) => ({
               id: toApiCardId(id),
               column_id: toApiColumnId(col.id),
               position: idx,
-            }))
-          ),
+            })),
+        );
+
+        if (validCards.length === 0) {
+          // No valid cards to update, skip API call
+          return;
+        }
+
+        const updates: api.BoardUpdate = {
+          columns: expectedColumns.map((col, idx) => ({
+            id: toApiColumnId(col.id),
+            title: col.title,
+            position: idx,
+          })),
+          cards: validCards,
         };
 
         await api.updateBoard(updates);
@@ -329,12 +390,13 @@ export const useBoard = (): UseBoard => {
         // Revert optimistic update
         setBoard(backupBoard);
 
-        const message = err instanceof Error ? err.message : "Failed to move card";
+        const message =
+          err instanceof Error ? err.message : "Failed to move card";
         setError(message);
         throw err;
       }
     },
-    [board]
+    [board],
   );
 
   return {

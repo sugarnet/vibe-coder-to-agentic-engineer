@@ -42,6 +42,11 @@ export type ColumnUpdate = {
 };
 
 export type BoardUpdate = {
+  columns: Array<{
+    id: number;
+    title: string;
+    position: number;
+  }>;
   cards: Array<{
     id: number;
     column_id: number;
@@ -191,10 +196,7 @@ export async function updateColumn(
   columnId: number,
   input: ColumnUpdate,
 ): Promise<Column> {
-  const response = await fetch(`/api/columns/${columnId}`, {
-    method: "PUT",
-    headers: getHeaders(true),
-    body: JSON.stringify(input),
-  });
-  return handleResponse<Column>(response);
+  // Note: Backend doesn't have individual column update endpoint
+  // This should be handled via updateBoard for bulk updates
+  throw new Error("Individual column updates not supported - use updateBoard");
 }
