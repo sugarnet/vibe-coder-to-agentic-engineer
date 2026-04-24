@@ -25,6 +25,7 @@ export type UseBoard = {
     toColumnId: string,
   ) => Promise<void>;
   retry: () => Promise<void>;
+  refetch: () => Promise<void>;
 };
 
 /**
@@ -409,5 +410,6 @@ export const useBoard = (): UseBoard => {
     renameColumn,
     moveCard,
     retry: loadBoard,
+    refetch: loadBoard,
   };
 };

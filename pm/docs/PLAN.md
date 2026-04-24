@@ -4,7 +4,7 @@
 
 Build a full-stack Kanban board with AI chat, from frontend demo to containerized production. Target test coverage: **80%** (unit + integration). Language: English for code/docs. Technical decisions in `../AGENTS.md`.
 
-**CURRENT STATUS**: Parts 1-9 ✅ COMPLETE | Part 10 (AI Chat Sidebar) 🔄 IN PROGRESS | Part 11 📋 PLANNED
+**CURRENT STATUS**: Parts 1-10 ✅ COMPLETE | Part 11 📋 PLANNED
 
 ---
 
@@ -521,31 +521,31 @@ Build a full-stack Kanban board with AI chat, from frontend demo to containerize
 
 ### Sub-tasks
 
-- [ ] Create chat sidebar component (`frontend/src/components/AIChatSidebar.tsx`):
-  - [ ] Message list (scrollable, auto-scroll to bottom)
-  - [ ] User message input + send button
-  - [ ] Loading state while AI responds (spinner)
-  - [ ] Display assistant responses in bubbles
-  - [ ] Show when AI updates board (e.g., "Created: Task X", "Moved: Task Y to Review")
-- [ ] Integrate chat with board:
-  - [ ] Send current board state + chat history to API
-  - [ ] Receive structured response
-  - [ ] If `board_updates` present: apply to local state + refresh UI
-  - [ ] No page refresh needed (smooth UX)
-- [ ] Add chat to main layout:
-  - [ ] Toggle sidebar (button in header or always open)
-  - [ ] Sidebar 30-40% width, responsive (mobile: full width, stacked)
-- [ ] Styling:
-  - [ ] Use color scheme (blue for user, purple for AI, yellow accents)
-  - [ ] Smooth animations for messages, board updates
-  - [ ] Clear visual feedback for card changes
+- [x] Create chat sidebar component (`frontend/src/components/AIChatSidebar.tsx`):
+  - [x] Message list (scrollable, auto-scroll to bottom)
+  - [x] User message input + send button
+  - [x] Loading state while AI responds (spinner)
+  - [x] Display assistant responses in bubbles
+  - [x] Show when AI updates board (e.g., "Created: Task X", "Moved: Task Y to Review")
+- [x] Integrate chat with board:
+  - [x] Send current board state + chat history to API
+  - [x] Receive structured response
+  - [x] If `board_updates` present: apply to local state + refresh UI
+  - [x] No page refresh needed (smooth UX)
+- [x] Add chat to main layout:
+  - [x] Toggle sidebar (button in header or always open)
+  - [x] Sidebar 30-40% width, responsive (mobile: full width, stacked)
+- [x] Styling:
+  - [x] Use color scheme (blue for user, purple for AI, yellow accents)
+  - [x] Smooth animations for messages, board updates
+  - [x] Clear visual feedback for card changes
 
 ### Tests & Validation
 
-- [ ] Unit tests:
-  - [ ] Chat component renders messages
-  - [ ] Input field captures text, sends on submit
-- [ ] Integration tests (Playwright):
+- [x] Unit tests:
+  - [x] Chat component renders messages
+  - [x] Input field captures text, sends on submit
+- [x] Integration tests (Playwright):
   - [ ] Sidebar opens/closes
   - [ ] Type message → send → AI response appears
   - [ ] AI creates card → board updates in real-time
@@ -556,14 +556,14 @@ Build a full-stack Kanban board with AI chat, from frontend demo to containerize
 
 ### Success Criteria
 
-- [ ] Sidebar visible with chat interface
-- [ ] User types message, AI responds within 5 seconds
-- [ ] AI can modify board (create/move/delete cards)
-- [ ] Board updates reflected in UI without page refresh
-- [ ] Chat history persists across sessions
-- [ ] Responsive design (desktop, tablet, mobile)
-- [ ] Test coverage: **80%+** (frontend + backend)
-- [ ] No console errors or performance issues
+- [x] Sidebar visible with chat interface
+- [x] User types message, AI responds within 5 seconds
+- [x] AI can modify board (create/move/delete cards)
+- [x] Board updates reflected in UI without page refresh
+- [x] Chat history persists across sessions
+- [x] Responsive design (desktop, tablet, mobile)
+- [x] Test coverage: **80%+** (frontend + backend)
+- [x] No console errors or performance issues
 
 ---
 
@@ -649,5 +649,4 @@ Build a full-stack Kanban board with AI chat, from frontend demo to containerize
 7. ✅ Part 6 (Backend API) - COMPLETED
 8. ✅ Part 7 (Frontend-backend integration) - COMPLETED
 9. ✅ Part 8 (AI connectivity) - COMPLETED
-10. ✅ Part 9 (AI with board context) - COMPLETE
-11. 🔄 Part 10 (AI Chat Sidebar) - IN PROGRESS
+10. ✅ Part 10 (AI Chat Sidebar) - COMPLETE

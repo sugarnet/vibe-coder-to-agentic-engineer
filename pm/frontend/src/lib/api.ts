@@ -3,6 +3,8 @@
  * Handles all CRUD operations with authentication
  */
 
+import type { BoardData } from "@/lib/kanban";
+
 export type Card = {
   id: number;
   title: string;
@@ -199,4 +201,63 @@ export async function updateColumn(
   // Note: Backend doesn't have individual column update endpoint
   // This should be handled via updateBoard for bulk updates
   throw new Error("Individual column updates not supported - use updateBoard");
+}
+
+/**
+ * Chat types
+ */
+export type ChatMessage = {
+  id: number;
+  user_id: number;
+  message: string;
+  response: string;
+  created_at: string;
+};
+
+export type ChatRequest = {
+  message: string;
+  board_state: BoardData;
+};
+
+export type ChatResponse = {
+  response: string;
+  board_updates?: {
+    actions: Array<{
+      action: "create_card" | "move_card" | "delete_card";
+      card_id?: string;
+      column_id?: string;
+      title?: string;
+      details?: string;
+      target_column_id?: string;
+    }>;
+  };
+};
+
+/**
+ * Send a chat message to AI
+ */
+export async function sendChatMessage(
+  message: string,
+  boardState: BoardData,
+): Promise<ChatResponse> {
+  const response = await fetch("/api/chat", {
+    method: "POST",
+    headers: getHeaders(true),
+    body: JSON.stringify({
+      message,
+      board_state: boardState,
+    } as ChatRequest),
+  });
+  return handleResponse<ChatResponse>(response);
+}
+
+/**
+ * Fetch chat history
+ */
+export async function fetchChatHistory(): Promise<ChatMessage[]> {
+  const response = await fetch("/api/chat/history", {
+    method: "GET",
+    headers: getHeaders(true),
+  });
+  return handleResponse<ChatMessage[]>(response);
 }
