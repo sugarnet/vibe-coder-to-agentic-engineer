@@ -91,8 +91,8 @@ export const AIChatSidebar = ({
       setMessages((prev) => [...prev, assistantMessage]);
 
       // Trigger board refresh if there were updates
-      if (response.board_updates?.actions.length) {
-        onBoardUpdate();
+      if (response.board_updates?.actions?.length) {
+        await onBoardUpdate();
       }
     } catch (error) {
       console.error("Chat error:", error);
@@ -108,28 +108,31 @@ export const AIChatSidebar = ({
     }
   };
 
-  const handleKeyPress = (e: React.KeyboardEvent) => {
+  const handleKeyPress = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       handleSendMessage();
     }
   };
 
-  // Don't render if closed
   if (!isOpen) {
-    return null;
+    return (
+      <button
+        onClick={onToggle}
+        className="fixed bottom-6 right-6 z-50 inline-flex h-14 w-14 items-center justify-center rounded-full border border-[var(--stroke)] bg-white/95 text-[var(--navy-dark)] shadow-lg transition duration-200 hover:bg-white"
+        aria-label="Open AI assistant"
+      >
+        <svg className="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2z" />
+        </svg>
+      </button>
+    );
   }
 
   return (
-    <>
-      {/* Overlay for mobile */}
-      <div
-        className="fixed inset-0 z-40 bg-black/20 backdrop-blur-sm lg:hidden"
-        onClick={onToggle}
-      />
+    <div className="fixed inset-0 z-50 flex items-end justify-end p-4 lg:items-end lg:justify-end" onClick={onToggle}>
 
-      {/* Sidebar */}
-      <div className="fixed right-0 top-0 z-50 flex h-full w-full max-w-md flex-col border-l border-[var(--stroke)] bg-white/95 backdrop-blur lg:relative lg:z-auto lg:max-w-sm lg:border-l-0 lg:bg-white/80">
+      <div className="relative z-10 w-full max-w-md max-h-[85vh] overflow-hidden rounded-[32px] border border-[var(--stroke)] bg-white/95 shadow-[var(--shadow)] backdrop-blur" onClick={(e) => e.stopPropagation()}>
         {/* Header */}
         <div className="flex items-center justify-between border-b border-[var(--stroke)] p-4">
           <h2 className="font-display text-lg font-semibold text-[var(--navy-dark)]">
@@ -137,7 +140,7 @@ export const AIChatSidebar = ({
           </h2>
           <button
             onClick={onToggle}
-            className="rounded-lg p-2 text-[var(--gray-text)] hover:bg-[var(--surface)] hover:text-[var(--navy-dark)] lg:hidden"
+            className="rounded-lg p-2 text-[var(--gray-text)] hover:bg-[var(--surface)] hover:text-[var(--navy-dark)]"
             aria-label="Close chat"
           >
             <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -237,6 +240,6 @@ export const AIChatSidebar = ({
           </div>
         </div>
       </div>
-    </>
+    </div>
   );
 };

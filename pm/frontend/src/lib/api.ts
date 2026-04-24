@@ -216,7 +216,7 @@ export type ChatMessage = {
 
 export type ChatRequest = {
   message: string;
-  board_state: BoardData;
+  board_state?: Record<string, any>;
 };
 
 export type ChatResponse = {
@@ -240,12 +240,30 @@ export async function sendChatMessage(
   message: string,
   boardState: BoardData,
 ): Promise<ChatResponse> {
+  // Convert frontend BoardData format to backend expected format
+  const backendBoardState = {
+    columns: boardState.columns.map((col, index) => ({
+      id: parseInt(col.id),
+      title: col.title,
+      position: index,
+      cards: col.cardIds.map((cardId, cardIndex) => {
+        const card = boardState.cards[cardId];
+        return {
+          id: parseInt(card.id),
+          title: card.title,
+          details: card.details || "",
+          position: cardIndex,
+        };
+      }),
+    })),
+  };
+
   const response = await fetch("/api/chat", {
     method: "POST",
     headers: getHeaders(true),
     body: JSON.stringify({
       message,
-      board_state: boardState,
+      board_state: backendBoardState,
     } as ChatRequest),
   });
   return handleResponse<ChatResponse>(response);

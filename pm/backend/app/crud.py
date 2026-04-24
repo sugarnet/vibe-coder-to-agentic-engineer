@@ -37,9 +37,28 @@ def get_or_create_user_board(db: Session, user_id: int) -> Board:
         db.refresh(board)
         # Create default columns
         default_columns = ["To Do", "In Progress", "Review", "Done", "Backlog"]
+        columns = []
         for idx, col_title in enumerate(default_columns):
             col = Column(board_id=board.id, title=col_title, position=idx)
             db.add(col)
+            columns.append(col)
+        db.commit()
+        db.refresh(board)
+
+        # Create default cards for the new board
+        default_cards = [
+            ("To Do", "Define MVP scope", "Clarify the first deliverables and timeline."),
+            ("In Progress", "Build login flow", "Implement auth and user session handling."),
+            ("Review", "Review board layout", "Check mobile and desktop layout for the Kanban board."),
+            ("Done", "Setup basic project structure", "Initial backend, frontend, and database scaffolding."),
+            ("Backlog", "Collect feature ideas", "Add any future ideas for the board and AI assistant."),
+        ]
+
+        for column_name, title, details in default_cards:
+            column = next((col for col in columns if col.title == column_name), None)
+            if column:
+                card = Card(column_id=column.id, title=title, details=details, position=db.query(Card).filter(Card.column_id == column.id).count())
+                db.add(card)
         db.commit()
     return board
 

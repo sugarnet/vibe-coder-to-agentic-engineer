@@ -158,15 +158,15 @@ export const KanbanBoard = ({ onLogout }: KanbanBoardProps) => {
 
       <div className="flex h-screen">
         {/* Main content */}
-        <main className={`flex-1 transition-all duration-300 ease-in-out ${isChatOpen ? "lg:mr-80" : ""}`}>
+        <main className="flex-1 transition-all duration-300 ease-in-out">
           <div className="mx-auto flex min-h-screen max-w-[1500px] flex-col gap-10 px-6 pb-16 pt-12">
-            <header className="flex flex-col gap-6 rounded-[32px] border border-[var(--stroke)] bg-white/80 p-8 shadow-[var(--shadow)] backdrop-blur">
+            <header className="flex flex-col gap-8 rounded-[32px] border border-[var(--stroke)] bg-white/80 p-8 shadow-[var(--shadow)] backdrop-blur transition-all duration-300 ease-in-out">
               <div className="flex flex-wrap items-start justify-between gap-6">
-                <div>
+                <div className="min-w-0">
                   <p className="text-xs font-semibold uppercase tracking-[0.35em] text-[var(--gray-text)]">
                     Single Board Kanban
                   </p>
-                  <h1 className="mt-3 font-display text-4xl font-semibold text-[var(--navy-dark)]">
+                  <h1 className="mt-3 max-w-3xl break-words font-display text-4xl font-semibold text-[var(--navy-dark)]">
                     Kanban Studio
                   </h1>
                   <p className="mt-3 max-w-xl text-sm leading-6 text-[var(--gray-text)]">
@@ -174,7 +174,7 @@ export const KanbanBoard = ({ onLogout }: KanbanBoardProps) => {
                     and capture quick notes without getting buried in settings.
                   </p>
                 </div>
-                <div className="flex flex-col gap-4">
+                <div className="flex flex-col items-stretch gap-4 sm:flex-row sm:items-center">
                   <div className="rounded-2xl border border-[var(--stroke)] bg-[var(--surface)] px-5 py-4">
                     <p className="text-xs font-semibold uppercase tracking-[0.25em] text-[var(--gray-text)]">
                       Focus
@@ -183,28 +183,15 @@ export const KanbanBoard = ({ onLogout }: KanbanBoardProps) => {
                       One board. Five columns. Zero clutter.
                     </p>
                   </div>
-                  <div className="flex gap-2">
+                  {onLogout && (
                     <button
-                      onClick={() => setIsChatOpen(!isChatOpen)}
-                      className={`rounded-lg border px-4 py-2 text-xs font-semibold uppercase tracking-wide transition ${
-                        isChatOpen
-                          ? "border-[var(--primary-purple)] bg-[var(--primary-purple)] text-white"
-                          : "border-[var(--stroke)] bg-white text-[var(--gray-text)] hover:border-[var(--accent-yellow)] hover:text-[var(--navy-dark)]"
-                      }`}
-                      aria-label="Toggle AI chat"
+                      onClick={onLogout}
+                      className="rounded-lg border border-[var(--stroke)] bg-white px-4 py-2 text-xs font-semibold uppercase tracking-wide text-[var(--gray-text)] transition hover:border-[var(--accent-yellow)] hover:text-[var(--navy-dark)]"
+                      aria-label="Sign out"
                     >
-                      AI Chat
+                      Sign Out
                     </button>
-                    {onLogout && (
-                      <button
-                        onClick={onLogout}
-                        className="rounded-lg border border-[var(--stroke)] bg-white px-4 py-2 text-xs font-semibold uppercase tracking-wide text-[var(--gray-text)] transition hover:border-[var(--accent-yellow)] hover:text-[var(--navy-dark)]"
-                        aria-label="Sign out"
-                      >
-                        Sign Out
-                      </button>
-                    )}
-                  </div>
+                  )}
                 </div>
               </div>
               <div className="flex flex-wrap items-center gap-4">

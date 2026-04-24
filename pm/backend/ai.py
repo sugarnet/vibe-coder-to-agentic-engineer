@@ -14,7 +14,7 @@ def get_ai_client():
     
     return OpenAI(
         api_key=api_key,
-        base_url="https://openrouter.io/api/v1"
+        base_url="https://openrouter.ai/api/v1"
     )
 
 
@@ -51,15 +51,22 @@ async def call_ai(prompt: str, timeout: int = 15) -> str:
             ],
             timeout=timeout
         )
-        
-        # Validate response
-        if not response.choices or len(response.choices) == 0:
+
+        # Validate response object
+        if isinstance(response, str):
+            raise ValueError(f"AI returned raw string response: {response}")
+
+        if not hasattr(response, "choices") or not response.choices:
             raise ValueError("AI returned no response choices")
-        
-        message_content = response.choices[0].message.content
+
+        first_choice = response.choices[0]
+        if not hasattr(first_choice, "message") or not hasattr(first_choice.message, "content"):
+            raise ValueError("AI response missing message content")
+
+        message_content = first_choice.message.content
         if not message_content or not message_content.strip():
             raise ValueError("AI returned empty response")
-        
+
         logger.info("AI call successful")
         return message_content
         
