@@ -140,12 +140,23 @@ class ChatHistoryResponse(BaseModel):
 
 
 class ChatRequest(BaseModel):
-    message: str
+    message: str = Field(..., min_length=1)
+    board_state: Optional[dict] = None  # Current board state for context
+
+
+class BoardUpdateAction(BaseModel):
+    """Individual board update action from AI."""
+    action: str = Field(..., description="Action type: create_card, move_card, delete_card")
+    card_id: Optional[int] = None
+    column_id: Optional[int] = None
+    target_column_id: Optional[int] = None  # For move_card
+    title: Optional[str] = None
+    details: Optional[str] = None
 
 
 class ChatResponse(BaseModel):
-    response: str
-    board_updates: Optional[dict] = None
+    response: str = Field(..., description="AI text response to user")
+    board_updates: Optional[List[BoardUpdateAction]] = Field(None, description="Optional board modifications")
 
 
 # AI test schemas

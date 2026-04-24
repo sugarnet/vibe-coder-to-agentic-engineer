@@ -45,7 +45,7 @@ async def call_ai(prompt: str, timeout: int = 15) -> str:
     
     try:
         response = client.chat.completions.create(
-            model="openai/gpt-3.5-turbo",
+            model="openai/gpt-oss-120b",
             messages=[
                 {"role": "user", "content": prompt}
             ],

@@ -17,10 +17,11 @@ from app.models import Base
 from app.schemas import (
     LoginRequest, LoginResponse, CardCreate, CardUpdate, CardResponse,
     BoardResponse, BoardUpdate, BoardUpdateResponse, ChatHistoryResponse,
-    ChatRequest, ChatResponse, AITestRequest, AITestResponse
+    ChatRequest, ChatResponse, AITestRequest, AITestResponse, BoardUpdateAction
 )
 import app.crud as crud
 import ai
+import chat
 
 # Initialize database
 init_db()
@@ -301,6 +302,35 @@ async def test_ai(request: AITestRequest):
     except Exception as e:
         # Other API errors
         raise HTTPException(status_code=500, detail=f"AI service error: {type(e).__name__}: {str(e)}")
+
+
+# ============= Chat Routes =============
+
+@app.post("/api/chat", response_model=ChatResponse)
+async def chat_with_ai(
+    request: ChatRequest,
+    user_id: int = Depends(get_current_user_id),
+    db: Session = Depends(get_db)
+):
+    """Chat with AI assistant that can modify the board."""
+    try:
+        # Get user's board
+        board = crud.get_or_create_user_board(db, user_id)
+
+        # Process chat message with AI
+        response = await chat.process_chat_message(
+            db=db,
+            board_id=board.id,
+            user_message=request.message,
+            board_data=request.board_state
+        )
+
+        return response
+
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=f"Invalid request: {str(e)}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Chat processing error: {type(e).__name__}: {str(e)}")
 
 
 # ============= Health & Demo Routes =============

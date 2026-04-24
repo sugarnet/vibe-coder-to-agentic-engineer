@@ -4,7 +4,7 @@
 
 Build a full-stack Kanban board with AI chat, from frontend demo to containerized production. Target test coverage: **80%** (unit + integration). Language: English for code/docs. Technical decisions in `../AGENTS.md`.
 
-**CURRENT STATUS**: Parts 1-8 ✅ COMPLETE | Part 9 (AI with Context) 🔄 IN PROGRESS | Parts 10-11 📋 PLANNED
+**CURRENT STATUS**: Parts 1-9 ✅ COMPLETE | Part 10 (AI Chat Sidebar) 🔄 IN PROGRESS | Part 11 📋 PLANNED
 
 ---
 
@@ -422,7 +422,7 @@ Build a full-stack Kanban board with AI chat, from frontend demo to containerize
 - [x] Create AI module (`backend/ai.py`):
   - [x] Init OpenAI client with OpenRouter base URL
   - [x] Implement `call_ai(prompt: str) → str` function
-  - [x] Use model: `openai/gpt-3.5-turbo`
+  - [x] Use model: `openai/gpt-oss-120b`
   - [x] Handle timeouts and retries
 - [x] Create test endpoint:
   - [x] `POST /api/ai/test` - Accepts prompt, calls AI, returns response
@@ -469,49 +469,49 @@ Build a full-stack Kanban board with AI chat, from frontend demo to containerize
 
 ### Sub-tasks
 
-- [ ] Define structured output schema (`backend/schemas.py`):
-  - [ ] `response: str` - Text reply to user
-  - [ ] `board_updates: Optional[BoardUpdate]` - Changes to board (new cards, move, delete, etc.)
-  - [ ] Example: `{"response": "Created 3 tasks", "board_updates": {"cards": [...], "columns": [...]}}`
-- [ ] Create chat endpoint:
-  - [ ] `POST /api/chat` - Accepts user message + current board state
-  - [ ] Load chat history for context
-  - [ ] Build AI prompt: board JSON + chat history + user message
-  - [ ] Call `call_ai()` with prompt
-  - [ ] Parse structured output (use JSON mode in model if available)
-  - [ ] Apply board updates if present
-  - [ ] Save chat message + response to DB
-  - [ ] Return structured response
-- [ ] Implement board update logic:
-  - [ ] AI can create cards: `{"action": "create_card", "column": "col-id", "title": "...", "details": "..."}`
-  - [ ] AI can move cards: `{"action": "move_card", "card_id": "...", "target_column": "..."}`
-  - [ ] AI can delete cards: `{"action": "delete_card", "card_id": "..."}`
-  - [ ] Validate updates before applying
-- [ ] Add conversation history:
-  - [ ] Load recent chat messages for context (last 5-10 messages)
-  - [ ] Include in AI prompt to enable multi-turn conversations
+- [x] Define structured output schema (`backend/schemas.py`):
+  - [x] `response: str` - Text reply to user
+  - [x] `board_updates: Optional[BoardUpdate]` - Changes to board (new cards, move, delete, etc.)
+  - [x] Example: `{"response": "Created 3 tasks", "board_updates": {"cards": [...], "columns": [...]}}`
+- [x] Create chat endpoint:
+  - [x] `POST /api/chat` - Accepts user message + current board state
+  - [x] Load chat history for context
+  - [x] Build AI prompt: board JSON + chat history + user message
+  - [x] Call `call_ai()` with prompt
+  - [x] Parse structured output (use JSON mode in model if available)
+  - [x] Apply board updates if present
+  - [x] Save chat message + response to DB
+  - [x] Return structured response
+- [x] Implement board update logic:
+  - [x] AI can create cards: `{"action": "create_card", "column": "col-id", "title": "...", "details": "..."}`
+  - [x] AI can move cards: `{"action": "move_card", "card_id": "...", "target_column": "..."}`
+  - [x] AI can delete cards: `{"action": "delete_card", "card_id": "..."}`
+  - [x] Validate updates before applying
+- [x] Add conversation history:
+  - [x] Load recent chat messages for context (last 5-10 messages)
+  - [x] Include in AI prompt to enable multi-turn conversations
 
 ### Tests & Validation
 
-- [ ] Unit tests:
-  - [ ] Prompt generation includes board + history
-  - [ ] Structured output parsing works
-  - [ ] Board update validation (no orphaned cards, etc.)
-- [ ] Integration tests:
-  - [ ] `POST /api/chat` with board + message → AI response received
-  - [ ] Response includes description of changes
-  - [ ] If board_updates present → DB reflects changes
-  - [ ] Chat history saved and retrieved correctly
-  - [ ] Multi-turn conversation maintains context
+- [x] Unit tests:
+  - [x] Prompt generation includes board + history
+  - [x] Structured output parsing works
+  - [x] Board update validation (no orphaned cards, etc.)
+- [x] Integration tests:
+  - [x] `POST /api/chat` with board + message → AI response received
+  - [x] Response includes description of changes
+  - [x] If board_updates present → DB reflects changes
+  - [x] Chat history saved and retrieved correctly
+  - [x] Multi-turn conversation maintains context
 
 ### Success Criteria
 
-- [ ] AI receives board context + chat history
-- [ ] Structured output schema defined and enforced
-- [ ] AI can create/move/delete cards via structured output
-- [ ] Updates applied correctly to database
-- [ ] Chat history preserved and contexts
-- [ ] Test coverage: **80%+**
+- [x] AI receives board context + chat history
+- [x] Structured output schema defined and enforced
+- [x] AI can create/move/delete cards via structured output
+- [x] Updates applied correctly to database
+- [x] Chat history preserved and contexts
+- [x] Test coverage: **80%+**
 
 ---
 
@@ -630,7 +630,7 @@ Build a full-stack Kanban board with AI chat, from frontend demo to containerize
 - [x] Part 6: Backend CRUD API complete, 80%+ tests
 - [x] Part 7: Frontend uses API, data persists
 - [x] Part 8: AI connectivity verified (2+2 test)
-- [ ] Part 9: AI receives board context, structured outputs
+- [x] Part 9: AI receives board context, structured outputs
 - [ ] Part 10: Chat sidebar, real-time board updates
 - [ ] **Combined test coverage: 80%+**
 - [ ] **Zero critical bugs, all features working**
@@ -649,4 +649,5 @@ Build a full-stack Kanban board with AI chat, from frontend demo to containerize
 7. ✅ Part 6 (Backend API) - COMPLETED
 8. ✅ Part 7 (Frontend-backend integration) - COMPLETED
 9. ✅ Part 8 (AI connectivity) - COMPLETED
-10. 🔄 Part 9 (AI with board context) - IN PROGRESS
+10. ✅ Part 9 (AI with board context) - COMPLETE
+11. 🔄 Part 10 (AI Chat Sidebar) - IN PROGRESS
