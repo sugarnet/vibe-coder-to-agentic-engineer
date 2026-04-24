@@ -146,3 +146,14 @@ class ChatRequest(BaseModel):
 class ChatResponse(BaseModel):
     response: str
     board_updates: Optional[dict] = None
+
+
+# AI test schemas
+class AITestRequest(BaseModel):
+    prompt: str = Field(..., min_length=1)
+
+
+class AITestResponse(BaseModel):
+    prompt: str
+    response: str
+    status: str = "success"

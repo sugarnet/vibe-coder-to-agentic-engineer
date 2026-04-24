@@ -17,9 +17,10 @@ from app.models import Base
 from app.schemas import (
     LoginRequest, LoginResponse, CardCreate, CardUpdate, CardResponse,
     BoardResponse, BoardUpdate, BoardUpdateResponse, ChatHistoryResponse,
-    ChatRequest, ChatResponse
+    ChatRequest, ChatResponse, AITestRequest, AITestResponse
 )
 import app.crud as crud
+import ai
 
 # Initialize database
 init_db()
@@ -277,6 +278,29 @@ async def delete_card(
         raise HTTPException(status_code=404, detail="Card not found")
     
     return {"status": "deleted", "card_id": card_id}
+
+
+# ============= AI Routes =============
+
+@app.post("/api/ai/test", response_model=AITestResponse)
+async def test_ai(request: AITestRequest):
+    """Test AI connectivity - call OpenRouter API with a prompt."""
+    try:
+        response = await ai.call_ai(request.prompt)
+        return AITestResponse(
+            prompt=request.prompt,
+            response=response,
+            status="success"
+        )
+    except ValueError as e:
+        # Missing or invalid API key
+        raise HTTPException(status_code=500, detail=f"AI configuration error: {str(e)}")
+    except TimeoutError as e:
+        # Request timeout
+        raise HTTPException(status_code=503, detail=f"AI service timeout: {str(e)}")
+    except Exception as e:
+        # Other API errors
+        raise HTTPException(status_code=500, detail=f"AI service error: {type(e).__name__}: {str(e)}")
 
 
 # ============= Health & Demo Routes =============
