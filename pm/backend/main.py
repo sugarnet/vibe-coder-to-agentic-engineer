@@ -333,6 +333,17 @@ async def chat_with_ai(
         raise HTTPException(status_code=500, detail=f"Chat processing error: {type(e).__name__}: {str(e)}")
 
 
+@app.get("/api/chat/history", response_model=list[ChatHistoryResponse])
+async def get_chat_history(
+    user_id: int = Depends(get_current_user_id),
+    db: Session = Depends(get_db)
+):
+    """Fetch chat history for the current user's board."""
+    board = crud.get_or_create_user_board(db, user_id)
+    history = crud.get_chat_history(db, board.id)
+    return history
+
+
 # ============= Health & Demo Routes =============
 
 @app.get("/api/health")

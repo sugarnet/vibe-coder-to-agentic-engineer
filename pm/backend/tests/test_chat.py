@@ -246,6 +246,41 @@ class TestChatEndpoint:
             assert "board_updates" in data
             assert len(data["board_updates"]) == 1
 
+    def test_get_chat_history_endpoint(self, client):
+        """GET /api/chat/history should return the saved chat history."""
+        login_response = client.post(
+            "/api/login",
+            json={"username": "user", "password": "password"}
+        )
+        token = login_response.json()["token"]
+
+        mock_ai_response = '''{
+            "response": "Hello from AI",
+            "board_updates": null
+        }'''
+
+        with patch("ai.call_ai", return_value=mock_ai_response):
+            response = client.post(
+                "/api/chat",
+                headers={"Authorization": f"Bearer {token}"},
+                json={"message": "Hello AI"}
+            )
+            assert response.status_code == 200
+
+        history_response = client.get(
+            "/api/chat/history",
+            headers={"Authorization": f"Bearer {token}"}
+        )
+
+        assert history_response.status_code == 200
+        history_data = history_response.json()
+        assert isinstance(history_data, list)
+        assert len(history_data) == 2
+        assert history_data[0]["role"] == "user"
+        assert history_data[1]["role"] == "assistant"
+        assert history_data[0]["content"] == "Hello AI"
+        assert history_data[1]["content"] == "Hello from AI"
+
     def test_chat_endpoint_ai_error_handling(self, client):
         """POST /api/chat should handle AI errors gracefully."""
         # First login

@@ -214,6 +214,13 @@ export type ChatMessage = {
   created_at: string;
 };
 
+export type ChatHistoryItem = {
+  id: number;
+  role: string;
+  content: string;
+  created_at: string;
+};
+
 export type ChatRequest = {
   message: string;
   board_state?: Record<string, any>;
@@ -221,16 +228,14 @@ export type ChatRequest = {
 
 export type ChatResponse = {
   response: string;
-  board_updates?: {
-    actions: Array<{
-      action: "create_card" | "move_card" | "delete_card";
-      card_id?: string;
-      column_id?: string;
-      title?: string;
-      details?: string;
-      target_column_id?: string;
-    }>;
-  };
+  board_updates?: Array<{
+    action: "create_card" | "move_card" | "delete_card";
+    card_id?: string;
+    column_id?: string;
+    title?: string;
+    details?: string;
+    target_column_id?: string;
+  }>;
 };
 
 /**
@@ -272,10 +277,10 @@ export async function sendChatMessage(
 /**
  * Fetch chat history
  */
-export async function fetchChatHistory(): Promise<ChatMessage[]> {
+export async function fetchChatHistory(): Promise<ChatHistoryItem[]> {
   const response = await fetch("/api/chat/history", {
     method: "GET",
     headers: getHeaders(true),
   });
-  return handleResponse<ChatMessage[]>(response);
+  return handleResponse<ChatHistoryItem[]>(response);
 }

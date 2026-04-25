@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import * as api from "@/lib/api";
 import type { BoardData } from "@/lib/kanban";
 
@@ -30,6 +30,27 @@ export const AIChatSidebar = ({
   const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  const loadHistory = useCallback(async () => {
+    try {
+      const history = await api.fetchChatHistory();
+      const historyList = Array.isArray(history) ? history : [];
+      setMessages(
+        historyList.map((message) => ({
+          id: `chat-${message.id}`,
+          type: message.role as "user" | "assistant",
+          content: message.content,
+          timestamp: new Date(message.created_at),
+        }))
+      );
+    } catch (error) {
+      console.error("Failed to load chat history:", error);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadHistory();
+  }, [loadHistory]);
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
@@ -64,8 +85,8 @@ export const AIChatSidebar = ({
       const response = await api.sendChatMessage(inputValue.trim(), boardData);
 
       const boardUpdates: string[] = [];
-      if (response.board_updates?.actions) {
-        response.board_updates.actions.forEach((action) => {
+      if (response.board_updates?.length) {
+        response.board_updates.forEach((action) => {
           switch (action.action) {
             case "create_card":
               boardUpdates.push(`Created: "${action.title}"`);
@@ -91,7 +112,7 @@ export const AIChatSidebar = ({
       setMessages((prev) => [...prev, assistantMessage]);
 
       // Trigger board refresh if there were updates
-      if (response.board_updates?.actions?.length) {
+      if (response.board_updates?.length) {
         await onBoardUpdate();
       }
     } catch (error) {
@@ -231,6 +252,7 @@ export const AIChatSidebar = ({
             <button
               onClick={handleSendMessage}
               disabled={!inputValue.trim() || isLoading}
+              aria-label="Send message"
               className="rounded-lg bg-[var(--primary-purple)] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[var(--primary-purple)]/90 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
