@@ -259,29 +259,9 @@ describe("API Client", () => {
   });
 
   describe("updateColumn", () => {
-    it("should update column title", async () => {
-      const input: api.ColumnUpdate = { title: "New Title" };
-
-      const mockColumn: api.Column = {
-        id: 1,
-        board_id: 1,
-        title: "New Title",
-        position: 0,
-      };
-
-      (global.fetch as any).mockResolvedValueOnce({
-        ok: true,
-        json: async () => mockColumn,
-      });
-
-      const result = await api.updateColumn(1, input);
-
-      expect(result).toEqual(mockColumn);
-      expect(global.fetch).toHaveBeenCalledWith(
-        "/api/columns/1",
-        expect.objectContaining({
-          method: "PUT",
-        })
+    it("should throw because individual column updates are not supported", async () => {
+      await expect(api.updateColumn(1, { title: "New Title" })).rejects.toThrow(
+        "Individual column updates not supported - use updateBoard"
       );
     });
   });

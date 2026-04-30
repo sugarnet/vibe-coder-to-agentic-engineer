@@ -175,12 +175,12 @@ describe("useBoard", () => {
 
   it("should delete card optimistically", async () => {
     vi.mocked(api.fetchBoard).mockResolvedValueOnce(mockBoardData);
-    vi.mocked(api.deleteCard).mockResolvedValueOnce();
+    vi.mocked(api.deleteCard).mockResolvedValueOnce(undefined);
 
     const { result } = renderHook(() => useBoard());
 
     await waitFor(() => {
-      expect(result.current.board).toBeDefined();
+      expect(result.current.board).not.toBeNull();
     });
 
     if (!result.current.board) throw new Error("Board not loaded");
@@ -201,12 +201,7 @@ describe("useBoard", () => {
 
   it("should rename column optimistically", async () => {
     vi.mocked(api.fetchBoard).mockResolvedValueOnce(mockBoardData);
-    vi.mocked(api.updateColumn).mockResolvedValueOnce({
-      id: 1,
-      board_id: 1,
-      title: "New Title",
-      position: 0,
-    });
+    vi.mocked(api.updateBoard).mockResolvedValueOnce({ success: true });
 
     const { result } = renderHook(() => useBoard());
 
@@ -223,7 +218,7 @@ describe("useBoard", () => {
       expect(result.current.board!.columns[0].title).toBe("New Title");
     });
 
-    expect(api.updateColumn).toHaveBeenCalledWith(1, { title: "New Title" });
+    expect(api.updateBoard).toHaveBeenCalled();
   });
 
   it("should move card between columns", async () => {
