@@ -258,14 +258,6 @@ describe("API Client", () => {
     });
   });
 
-  describe("updateColumn", () => {
-    it("should throw because individual column updates are not supported", async () => {
-      await expect(api.updateColumn(1, { title: "New Title" })).rejects.toThrow(
-        "Individual column updates not supported - use updateBoard"
-      );
-    });
-  });
-
   describe("APIError", () => {
     it("should create APIError with status and message", () => {
       const error = new api.APIError(404, "Not found", { reason: "card" });

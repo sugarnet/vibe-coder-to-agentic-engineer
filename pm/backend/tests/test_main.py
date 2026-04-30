@@ -6,7 +6,7 @@ import sqlite3
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from main import app, valid_tokens, get_db
+from main import app, get_db
 from app.models import Base
 
 
@@ -47,7 +47,6 @@ def test_db():
 @pytest.fixture(scope="function")
 def client(test_db):
     """Create test client with test database."""
-    valid_tokens.clear()  # Clear tokens before each test
     return TestClient(app)
 
 

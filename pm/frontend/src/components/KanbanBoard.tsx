@@ -86,7 +86,7 @@ export const KanbanBoard = ({ onLogout }: KanbanBoardProps) => {
 
   const handleAddCard = useCallback(
     (columnId: string, title: string, details: string) => {
-      addCard(columnId, title, details || "No details yet.").catch(() => {
+      addCard(columnId, title, details).catch(() => {
         setDelayedError("Failed to add card");
         setTimeout(() => setDelayedError(null), 4000);
       });

@@ -52,18 +52,9 @@ async def call_ai(prompt: str, timeout: int = 15) -> str:
             timeout=timeout
         )
 
-        # Validate response object
-        if isinstance(response, str):
-            raise ValueError(f"AI returned raw string response: {response}")
-
-        if not hasattr(response, "choices") or not response.choices:
+        if not response.choices:
             raise ValueError("AI returned no response choices")
-
-        first_choice = response.choices[0]
-        if not hasattr(first_choice, "message") or not hasattr(first_choice.message, "content"):
-            raise ValueError("AI response missing message content")
-
-        message_content = first_choice.message.content
+        message_content = response.choices[0].message.content
         if not message_content or not message_content.strip():
             raise ValueError("AI returned empty response")
 
@@ -78,9 +69,4 @@ async def call_ai(prompt: str, timeout: int = 15) -> str:
         raise
     except Exception as e:
         logger.error(f"AI API error: {type(e).__name__}: {e}")
-        # Print more details for debugging
-        print(f"DEBUG: AI API error details: {type(e).__name__}: {e}")
-        if hasattr(e, 'response'):
-            print(f"DEBUG: Response status: {e.response.status_code if hasattr(e.response, 'status_code') else 'N/A'}")
-            print(f"DEBUG: Response body: {e.response.text if hasattr(e.response, 'text') else 'N/A'}")
         raise

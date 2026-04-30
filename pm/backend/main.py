@@ -3,8 +3,6 @@ from fastapi import FastAPI, HTTPException, Depends, Header
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
-import secrets
-import string
 import sys
 from typing import Optional
 from sqlalchemy.orm import Session
@@ -32,103 +30,41 @@ app = FastAPI(title="Kanban API", version="0.1.0")
 VALID_USERNAME = "user"
 VALID_PASSWORD = "password"
 
-# Token storage (in production, use JWT or sessions in database)
-# For MVP, we'll use simple in-memory storage, cleared on restart
-valid_tokens: dict[str, int] = {}  # token -> user_id mapping
-
-
 def generate_token(user_id: int) -> str:
-    """Generate a token-based on user_id (simple, no state needed on restart)."""
-    # For MVP: Use simple Base64 encoding of user_id
-    # In production, use JWT with signing
+    """Generate a base64 token encoding user_id and credentials."""
     import base64
     token_data = f"{user_id}:{VALID_USERNAME}:{VALID_PASSWORD}"
-    # Simple XOR-based obfuscation with a secret seed (mock, not secure)
     return base64.b64encode(token_data.encode()).decode()
 
-def decode_token(token: str, db: Session) -> int:
+
+def decode_token(token: str) -> int:
     """Decode and validate token, returns user_id."""
     try:
         import base64
-        
-        # Ensure token is a string
-        if isinstance(token, bytes):
-            token = token.decode('utf-8')
-        
-        # Strip whitespace
-        token = token.strip()
-        
-        # Validate base64 format (should be alphanumeric + /+=)
-        import string
-        valid_chars = string.ascii_letters + string.digits + '/+='
-        if not all(c in valid_chars for c in token):
-            invalid_chars = [c for c in token if c not in valid_chars]
-            raise ValueError(f"Invalid characters in token: {invalid_chars}")
-        
-        # Decode base64 with validation
-        try:
-            decoded_bytes = base64.b64decode(token, validate=True)
-        except Exception as e:
-            raise ValueError(f"Invalid base64: {e}")
-        
-        # Decode UTF-8
-        try:
-            decoded = decoded_bytes.decode('utf-8')
-        except UnicodeDecodeError as e:
-            raise ValueError(f"Invalid UTF-8 in token: {e}")
-        
-        parts = decoded.split(':')
-        
-        # Validate format
-        if len(parts) != 3:
-            raise ValueError(f"Invalid token format: expected 3 parts, got {len(parts)}")
-        
-        user_id_str, username, password = parts
-        
-        try:
-            user_id = int(user_id_str)
-        except ValueError:
-            raise ValueError(f"Invalid user_id: {user_id_str}")
-        
-        # Validate credentials match
+        decoded = base64.b64decode(token, validate=True).decode()
+        user_id_str, username, password = decoded.split(":", 2)
         if username != VALID_USERNAME or password != VALID_PASSWORD:
-            raise ValueError(f"Invalid credentials in token")
-        
-        # Verify user exists in database
-        user = crud.get_or_create_user(db, VALID_USERNAME)
-        if user.id != user_id:
-            raise ValueError(f"User mismatch: token has {user_id}, db has {user.id}")
-        
-        return user_id
-        
-    except ValueError as err:
-        raise err
-    except Exception as err:
-        raise ValueError(f"Invalid token: {err}")
+            raise ValueError
+        return int(user_id_str)
+    except Exception:
+        raise ValueError("Invalid token")
 
 
 def get_current_user_id(
     authorization: Optional[str] = Header(None),
-    db: Session = Depends(get_db)
 ) -> int:
     """Extract and validate user ID from Authorization header."""
     if not authorization:
         raise HTTPException(status_code=403, detail="Missing authorization header")
-    
-    # Extract token (format: "Bearer <token>")
+
     parts = authorization.split()
     if len(parts) != 2 or parts[0] != "Bearer":
         raise HTTPException(status_code=403, detail="Invalid authorization header format")
-    
-    token = parts[1]
-    
+
     try:
-        user_id = decode_token(token, db)
-        print(f"✓ Token validated for user_id={user_id}")
-        return user_id
-    except ValueError as e:
-        print(f"❌ Token validation failed: {e}")
-        raise HTTPException(status_code=401, detail=str(e))
+        return decode_token(parts[1])
+    except ValueError:
+        raise HTTPException(status_code=401, detail="Invalid token")
 
 
 

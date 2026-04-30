@@ -39,10 +39,6 @@ export type CardUpdate = {
   details?: string;
 };
 
-export type ColumnUpdate = {
-  title?: string;
-};
-
 export type BoardUpdate = {
   columns: Array<{
     id: number;
@@ -191,29 +187,6 @@ export async function updateBoard(
   return handleResponse<{ success: boolean }>(response);
 }
 
-/**
- * Update column title
- */
-export async function updateColumn(
-  columnId: number,
-  input: ColumnUpdate,
-): Promise<Column> {
-  // Note: Backend doesn't have individual column update endpoint
-  // This should be handled via updateBoard for bulk updates
-  throw new Error("Individual column updates not supported - use updateBoard");
-}
-
-/**
- * Chat types
- */
-export type ChatMessage = {
-  id: number;
-  user_id: number;
-  message: string;
-  response: string;
-  created_at: string;
-};
-
 export type ChatHistoryItem = {
   id: number;
   role: string;
@@ -230,11 +203,11 @@ export type ChatResponse = {
   response: string;
   board_updates?: Array<{
     action: "create_card" | "move_card" | "delete_card";
-    card_id?: string;
-    column_id?: string;
+    card_id?: number;
+    column_id?: number;
     title?: string;
     details?: string;
-    target_column_id?: string;
+    target_column_id?: number;
   }>;
 };
 
