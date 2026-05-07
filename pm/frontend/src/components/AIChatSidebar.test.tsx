@@ -66,7 +66,7 @@ describe("AIChatSidebar", () => {
     });
   });
 
-  it("does not render when closed", async () => {
+  it("renders content regardless of isOpen (parent wrapper controls visibility)", async () => {
     vi.mocked(api.fetchChatHistory).mockResolvedValueOnce([]);
     render(<AIChatSidebar {...defaultProps} isOpen={false} />);
 
@@ -74,7 +74,7 @@ describe("AIChatSidebar", () => {
       expect(api.fetchChatHistory).toHaveBeenCalled();
     });
 
-    expect(screen.queryByText("AI Assistant")).not.toBeInTheDocument();
+    expect(screen.getByText("AI Assistant")).toBeInTheDocument();
   });
 
   it("retains previous chat bubbles after closing and reopening", async () => {

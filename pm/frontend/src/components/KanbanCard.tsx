@@ -22,7 +22,8 @@ export const KanbanCard = ({ card, onDelete }: KanbanCardProps) => {
       ref={setNodeRef}
       style={style}
       className={clsx(
-        "rounded-2xl border border-transparent bg-white px-4 py-4 shadow-[0_12px_24px_rgba(3,33,71,0.08)]",
+        "group relative rounded-xl border border-transparent bg-white px-4 py-3",
+        "shadow-[0_4px_12px_rgba(3,33,71,0.06)] hover:shadow-[0_6px_20px_rgba(3,33,71,0.1)]",
         "transition-all duration-150",
         isDragging && "opacity-60 shadow-[0_18px_32px_rgba(3,33,71,0.16)]"
       )}
@@ -30,22 +31,26 @@ export const KanbanCard = ({ card, onDelete }: KanbanCardProps) => {
       {...listeners}
       data-testid={`card-${card.id}`}
     >
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <h4 className="font-display text-base font-semibold text-[var(--navy-dark)]">
+      <div className="flex items-start gap-3">
+        <div className="min-w-0 flex-1">
+          <h4 className="font-display text-sm font-semibold leading-snug text-[var(--navy-dark)]">
             {card.title}
           </h4>
-          <p className="mt-2 text-sm leading-6 text-[var(--gray-text)]">
-            {card.details}
-          </p>
+          {card.details && (
+            <p className="mt-1.5 line-clamp-2 text-xs leading-5 text-[var(--gray-text)]">
+              {card.details}
+            </p>
+          )}
         </div>
         <button
           type="button"
           onClick={() => onDelete(card.id)}
-          className="rounded-full border border-transparent px-2 py-1 text-xs font-semibold text-[var(--gray-text)] transition hover:border-[var(--stroke)] hover:text-[var(--navy-dark)]"
+          className="shrink-0 rounded-md p-1 text-[var(--gray-text)] opacity-0 transition-all group-hover:opacity-100 hover:bg-red-50 hover:text-red-500"
           aria-label={`Delete ${card.title}`}
         >
-          Remove
+          <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+          </svg>
         </button>
       </div>
     </article>
