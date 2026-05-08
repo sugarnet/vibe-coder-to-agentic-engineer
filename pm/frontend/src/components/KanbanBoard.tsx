@@ -31,6 +31,7 @@ export const KanbanBoard = ({ onLogout }: KanbanBoardProps) => {
     isLoading,
     error,
     addCard,
+    updateCardFields,
     deleteCard,
     renameColumn,
     addColumn,
@@ -96,8 +97,8 @@ export const KanbanBoard = ({ onLogout }: KanbanBoardProps) => {
   );
 
   const handleAddCard = useCallback(
-    (columnId: string, title: string, details: string) => {
-      addCard(columnId, title, details).catch(() => showError("Failed to add card"));
+    (columnId: string, title: string, details: string, priority?: string, dueDate?: string) => {
+      addCard(columnId, title, details, priority, dueDate).catch(() => showError("Failed to add card"));
     },
     [addCard, showError]
   );
@@ -114,6 +115,13 @@ export const KanbanBoard = ({ onLogout }: KanbanBoardProps) => {
       deleteColumn(columnId).catch(() => showError("Failed to delete column"));
     },
     [deleteColumn, showError]
+  );
+
+  const handleUpdateCard = useCallback(
+    (cardId: string, updates: api.CardUpdate) => {
+      updateCardFields(cardId, updates).catch(() => showError("Failed to update card"));
+    },
+    [updateCardFields, showError]
   );
 
   const startEditTitle = () => {
@@ -295,6 +303,7 @@ export const KanbanBoard = ({ onLogout }: KanbanBoardProps) => {
                   onRename={handleRenameColumn}
                   onAddCard={handleAddCard}
                   onDeleteCard={handleDeleteCard}
+                  onUpdateCard={handleUpdateCard}
                   onDeleteColumn={handleDeleteColumn}
                   canDelete={board.columns.length > 1}
                 />

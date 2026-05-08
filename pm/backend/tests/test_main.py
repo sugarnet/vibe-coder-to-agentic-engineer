@@ -336,3 +336,112 @@ class TestNotFoundRoutes:
     def test_undefined_route_returns_404(self, client):
         response = client.get("/api/undefined")
         assert response.status_code == 404
+
+
+class TestUserIsolation:
+    def _register_and_token(self, client, username):
+        resp = client.post("/api/register", json={"username": username, "password": "pass1234"})
+        return resp.json()["token"]
+
+    def test_user_cannot_update_another_users_card(self, client):
+        token_a = self._register_and_token(client, "iso_user_a")
+        token_b = self._register_and_token(client, "iso_user_b")
+        headers_a = {"Authorization": f"Bearer {token_a}"}
+        headers_b = {"Authorization": f"Bearer {token_b}"}
+
+        board = client.get("/api/user/board", headers=headers_a).json()
+        col_id = board["columns"][0]["id"]
+        card = client.post("/api/cards", json={"column_id": col_id, "title": "A card"}, headers=headers_a).json()
+
+        response = client.put(f"/api/cards/{card['id']}", json={"title": "Stolen"}, headers=headers_b)
+        assert response.status_code == 403
+
+    def test_user_cannot_delete_another_users_card(self, client):
+        token_a = self._register_and_token(client, "iso_del_a")
+        token_b = self._register_and_token(client, "iso_del_b")
+        headers_a = {"Authorization": f"Bearer {token_a}"}
+        headers_b = {"Authorization": f"Bearer {token_b}"}
+
+        board = client.get("/api/user/board", headers=headers_a).json()
+        col_id = board["columns"][0]["id"]
+        card = client.post("/api/cards", json={"column_id": col_id, "title": "A card"}, headers=headers_a).json()
+
+        response = client.delete(f"/api/cards/{card['id']}", headers=headers_b)
+        assert response.status_code == 403
+
+    def test_user_cannot_add_column_to_another_users_board(self, client):
+        token_a = self._register_and_token(client, "iso_col_a")
+        token_b = self._register_and_token(client, "iso_col_b")
+        headers_a = {"Authorization": f"Bearer {token_a}"}
+        headers_b = {"Authorization": f"Bearer {token_b}"}
+
+        board = client.get("/api/user/board", headers=headers_a).json()
+        board_id = board["id"]
+
+        response = client.post(f"/api/boards/{board_id}/columns", json={"title": "Stolen"}, headers=headers_b)
+        assert response.status_code == 403
+
+    def test_board_data_is_scoped_to_user(self, client):
+        token_a = self._register_and_token(client, "scope_a")
+        token_b = self._register_and_token(client, "scope_b")
+        headers_a = {"Authorization": f"Bearer {token_a}"}
+        headers_b = {"Authorization": f"Bearer {token_b}"}
+
+        board_a = client.get("/api/user/board", headers=headers_a).json()
+        col_id = board_a["columns"][0]["id"]
+        client.post("/api/cards", json={"column_id": col_id, "title": "Secret card"}, headers=headers_a)
+
+        board_b = client.get("/api/user/board", headers=headers_b).json()
+        titles = [c["title"] for c in board_b["cards"]]
+        assert "Secret card" not in titles
+
+
+class TestCardFieldEdgeCases:
+    def test_update_card_clears_priority(self, client, auth_headers):
+        board = client.get("/api/user/board", headers=auth_headers).json()
+        col_id = board["columns"][0]["id"]
+
+        card = client.post("/api/cards", json={"column_id": col_id, "title": "T", "priority": "high"}, headers=auth_headers).json()
+        assert card["priority"] == "high"
+
+        updated = client.put(f"/api/cards/{card['id']}", json={"priority": None}, headers=auth_headers).json()
+        assert updated["priority"] is None
+
+    def test_update_card_clears_due_date(self, client, auth_headers):
+        board = client.get("/api/user/board", headers=auth_headers).json()
+        col_id = board["columns"][0]["id"]
+
+        card = client.post("/api/cards", json={"column_id": col_id, "title": "T", "due_date": "2026-12-31"}, headers=auth_headers).json()
+        assert card["due_date"] == "2026-12-31"
+
+        updated = client.put(f"/api/cards/{card['id']}", json={"due_date": None}, headers=auth_headers).json()
+        assert updated["due_date"] is None
+
+    def test_card_color_field(self, client, auth_headers):
+        board = client.get("/api/user/board", headers=auth_headers).json()
+        col_id = board["columns"][0]["id"]
+
+        card = client.post("/api/cards", json={"column_id": col_id, "title": "T", "color": "#ff0000"}, headers=auth_headers).json()
+        assert card["color"] == "#ff0000"
+
+        updated = client.put(f"/api/cards/{card['id']}", json={"color": None}, headers=auth_headers).json()
+        assert updated["color"] is None
+
+    def test_column_positions_reorder_after_delete(self, client, auth_headers):
+        board_resp = client.post("/api/boards", json={"title": "Pos Test"}, headers=auth_headers)
+        board_id = board_resp.json()["id"]
+        board = client.get(f"/api/boards/{board_id}", headers=auth_headers).json()
+
+        # Add an extra column (now 6 total)
+        client.post(f"/api/boards/{board_id}/columns", json={"title": "Extra"}, headers=auth_headers)
+        board = client.get(f"/api/boards/{board_id}", headers=auth_headers).json()
+        assert len(board["columns"]) == 6
+
+        # Delete the second column
+        second_col_id = board["columns"][1]["id"]
+        client.delete(f"/api/boards/{board_id}/columns/{second_col_id}", headers=auth_headers)
+
+        board = client.get(f"/api/boards/{board_id}", headers=auth_headers).json()
+        assert len(board["columns"]) == 5
+        positions = [col["position"] for col in board["columns"]]
+        assert positions == list(range(len(positions)))

@@ -3,6 +3,7 @@ import { useState, useEffect } from "react";
 import { useDroppable } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import type { Card, Column } from "@/lib/kanban";
+import type * as api from "@/lib/api";
 import { KanbanCard } from "@/components/KanbanCard";
 import { NewCardForm } from "@/components/NewCardForm";
 
@@ -13,8 +14,9 @@ type KanbanColumnProps = {
   cards: Card[];
   columnIndex: number;
   onRename: (columnId: string, title: string) => void;
-  onAddCard: (columnId: string, title: string, details: string) => void;
+  onAddCard: (columnId: string, title: string, details: string, priority?: string, dueDate?: string) => void;
   onDeleteCard: (columnId: string, cardId: string) => void;
+  onUpdateCard?: (cardId: string, updates: api.CardUpdate) => void;
   onDeleteColumn?: (columnId: string) => void;
   canDelete?: boolean;
 };
@@ -26,6 +28,7 @@ export const KanbanColumn = ({
   onRename,
   onAddCard,
   onDeleteCard,
+  onUpdateCard,
   onDeleteColumn,
   canDelete = true,
 }: KanbanColumnProps) => {
@@ -93,6 +96,7 @@ export const KanbanColumn = ({
                 key={card.id}
                 card={card}
                 onDelete={(cardId) => onDeleteCard(column.id, cardId)}
+                onUpdate={onUpdateCard}
               />
             ))}
             {cards.length === 0 && (
@@ -106,7 +110,7 @@ export const KanbanColumn = ({
 
       {/* New card form */}
       <div className="shrink-0 p-4 pt-2">
-        <NewCardForm onAdd={(title, details) => onAddCard(column.id, title, details)} />
+        <NewCardForm onAdd={(title, details, priority, dueDate) => onAddCard(column.id, title, details, priority, dueDate)} />
       </div>
     </section>
   );

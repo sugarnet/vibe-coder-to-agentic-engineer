@@ -217,27 +217,11 @@ def create_card(
     return card
 
 
-def update_card(
-    db: Session,
-    card_id: int,
-    title: str = None,
-    details: str = None,
-    priority: str = None,
-    due_date: str = None,
-    color: str = None,
-) -> Card | None:
+def update_card(db: Session, card_id: int, updates: dict) -> Card | None:
     card = db.query(Card).filter(Card.id == card_id).first()
     if card:
-        if title is not None:
-            card.title = title
-        if details is not None:
-            card.details = details
-        if priority is not None:
-            card.priority = priority
-        if due_date is not None:
-            card.due_date = due_date
-        if color is not None:
-            card.color = color
+        for field, value in updates.items():
+            setattr(card, field, value)
         db.commit()
         db.refresh(card)
     return card

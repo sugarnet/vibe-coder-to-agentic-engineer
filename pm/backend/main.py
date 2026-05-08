@@ -371,11 +371,7 @@ async def update_card(
     if board.user_id != user_id:
         raise HTTPException(status_code=403, detail="Unauthorized")
 
-    updated = crud.update_card(
-        db, card_id,
-        card_update.title, card_update.details,
-        card_update.priority, card_update.due_date, card_update.color,
-    )
+    updated = crud.update_card(db, card_id, card_update.model_dump(exclude_unset=True))
     return updated
 
 

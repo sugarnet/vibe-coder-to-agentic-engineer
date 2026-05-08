@@ -16,8 +16,9 @@ export type UseBoard = {
   boardTitle: string;
   isLoading: boolean;
   error: string | null;
-  addCard: (columnId: string, title: string, details: string) => Promise<void>;
+  addCard: (columnId: string, title: string, details: string, priority?: string, dueDate?: string) => Promise<void>;
   updateCard: (cardId: string, title: string, details: string) => Promise<void>;
+  updateCardFields: (cardId: string, updates: api.CardUpdate) => Promise<void>;
   deleteCard: (cardId: string) => Promise<void>;
   renameColumn: (columnId: string, title: string) => Promise<void>;
   addColumn: (title: string) => Promise<void>;
@@ -102,11 +103,17 @@ export const useBoard = (initialBoardId?: number): UseBoard => {
   );
 
   const addCard = useCallback(
-    async (columnId: string, title: string, details: string) => {
+    async (columnId: string, title: string, details: string, priority?: string, dueDate?: string) => {
       if (!board) return;
 
       const optimisticId = `temp-${Date.now()}`;
-      const optimisticCard: LocalCard = { id: optimisticId, title, details };
+      const optimisticCard: LocalCard = {
+        id: optimisticId,
+        title,
+        details,
+        priority: priority || undefined,
+        due_date: dueDate || undefined,
+      };
 
       setBoard((prev) => {
         if (!prev) return prev;
@@ -126,6 +133,8 @@ export const useBoard = (initialBoardId?: number): UseBoard => {
           column_id: toApiColumnId(columnId),
           title,
           details,
+          ...(priority && { priority: priority as "low" | "medium" | "high" }),
+          ...(dueDate && { due_date: dueDate }),
         });
 
         setBoard((prev) => {
@@ -192,6 +201,46 @@ export const useBoard = (initialBoardId?: number): UseBoard => {
 
       try {
         await api.updateCard(toApiCardId(cardId), { title, details });
+      } catch (err) {
+        setBoard((prev) => {
+          if (!prev) return prev;
+          return { ...prev, cards: { ...prev.cards, [cardId]: oldCard } };
+        });
+        const message = err instanceof Error ? err.message : "Failed to update card";
+        setError(message);
+        throw err;
+      }
+    },
+    [board],
+  );
+
+  const updateCardFields = useCallback(
+    async (cardId: string, updates: api.CardUpdate) => {
+      if (!board) return;
+      const oldCard = board.cards[cardId];
+      if (!oldCard) return;
+
+      setBoard((prev) => {
+        if (!prev) return prev;
+        const cur = prev.cards[cardId]!;
+        return {
+          ...prev,
+          cards: {
+            ...prev.cards,
+            [cardId]: {
+              ...cur,
+              ...(updates.title !== undefined && { title: updates.title }),
+              ...(updates.details !== undefined && { details: updates.details || "" }),
+              priority: updates.priority === null ? undefined : (updates.priority ?? cur.priority),
+              due_date: updates.due_date === null ? undefined : (updates.due_date ?? cur.due_date),
+              color: updates.color === null ? undefined : (updates.color ?? cur.color),
+            },
+          },
+        };
+      });
+
+      try {
+        await api.updateCard(toApiCardId(cardId), updates);
       } catch (err) {
         setBoard((prev) => {
           if (!prev) return prev;
@@ -380,6 +429,7 @@ export const useBoard = (initialBoardId?: number): UseBoard => {
     error,
     addCard,
     updateCard,
+    updateCardFields,
     deleteCard,
     renameColumn,
     addColumn,
