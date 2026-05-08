@@ -111,7 +111,7 @@ export const useBoard = (initialBoardId?: number): UseBoard => {
         id: optimisticId,
         title,
         details,
-        priority: priority || undefined,
+        priority: (priority as "low" | "medium" | "high") || undefined,
         due_date: dueDate || undefined,
       };
 

@@ -29,8 +29,8 @@ export type Board = {
   title: string;
   columns: Column[];
   cards: Card[];
-  created_at?: string;
-  updated_at?: string;
+  created_at: string;
+  updated_at: string;
 };
 
 export type BoardSummary = {
