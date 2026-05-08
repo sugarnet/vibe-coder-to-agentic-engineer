@@ -14,6 +14,7 @@ type Message = {
 
 type AIChatSidebarProps = {
   boardData: BoardData;
+  boardId?: number;
   onBoardUpdate: () => void;
   isOpen: boolean;
   onToggle: () => void;
@@ -21,6 +22,7 @@ type AIChatSidebarProps = {
 
 export const AIChatSidebar = ({
   boardData,
+  boardId,
   onBoardUpdate,
   isOpen,
   onToggle,
@@ -33,7 +35,7 @@ export const AIChatSidebar = ({
 
   const loadHistory = useCallback(async () => {
     try {
-      const history = await api.fetchChatHistory();
+      const history = await api.fetchChatHistory(boardId);
       const historyList = Array.isArray(history) ? history : [];
       setMessages(
         historyList.map((message) => ({
@@ -43,10 +45,10 @@ export const AIChatSidebar = ({
           timestamp: new Date(message.created_at),
         }))
       );
-    } catch (error) {
-      console.error("Failed to load chat history:", error);
+    } catch {
+      // ignore
     }
-  }, []);
+  }, [boardId]);
 
   useEffect(() => {
     loadHistory();
@@ -79,7 +81,7 @@ export const AIChatSidebar = ({
     setIsLoading(true);
 
     try {
-      const response = await api.sendChatMessage(inputValue.trim(), boardData);
+      const response = await api.sendChatMessage(inputValue.trim(), boardData, boardId);
 
       const boardUpdates: string[] = [];
       if (response.board_updates?.length) {

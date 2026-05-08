@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useCallback } from "react";
+import { useMemo, useState, useCallback, useRef } from "react";
 import clsx from "clsx";
 import {
   DndContext,
@@ -15,26 +15,56 @@ import {
 import { KanbanColumn } from "@/components/KanbanColumn";
 import { KanbanCardPreview } from "@/components/KanbanCardPreview";
 import { AIChatSidebar } from "@/components/AIChatSidebar";
+import { BoardSelector } from "@/components/BoardSelector";
 import { useBoard } from "@/lib/useBoard";
+import * as api from "@/lib/api";
 
 type KanbanBoardProps = {
   onLogout?: () => void;
 };
 
 export const KanbanBoard = ({ onLogout }: KanbanBoardProps) => {
-  const { board, isLoading, error, addCard, deleteCard, renameColumn, moveCard: moveBoardCard, retry, refetch } = useBoard();
+  const {
+    board,
+    boardId,
+    boardTitle,
+    isLoading,
+    error,
+    addCard,
+    deleteCard,
+    renameColumn,
+    addColumn,
+    deleteColumn,
+    moveCard: moveBoardCard,
+    retry,
+    refetch,
+    loadBoardById,
+  } = useBoard();
+
   const [activeCardId, setActiveCardId] = useState<string | null>(null);
   const [delayedError, setDelayedError] = useState<string | null>(null);
   const [isChatOpen, setIsChatOpen] = useState(false);
 
+  // Board title editing
+  const [editingTitle, setEditingTitle] = useState(false);
+  const [titleInput, setTitleInput] = useState("");
+  const titleInputRef = useRef<HTMLInputElement>(null);
+
+  // Add column
+  const [showAddColumn, setShowAddColumn] = useState(false);
+  const [newColumnTitle, setNewColumnTitle] = useState("");
+
   const sensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: { distance: 6 },
-    })
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } })
   );
 
   const cardsById = useMemo(() => board?.cards || {}, [board?.cards]);
   const displayedError = delayedError || error;
+
+  const showError = useCallback((msg: string) => {
+    setDelayedError(msg);
+    setTimeout(() => setDelayedError(null), 4000);
+  }, []);
 
   const handleDragStart = (event: DragStartEvent) => {
     setActiveCardId(event.active.id as string);
@@ -44,58 +74,77 @@ export const KanbanBoard = ({ onLogout }: KanbanBoardProps) => {
     (event: DragEndEvent) => {
       const { active, over } = event;
       setActiveCardId(null);
-
       if (!over || active.id === over.id || !board) return;
 
       const cardId = active.id as string;
-      const currentColumnId = board.columns.find((col) =>
-        col.cardIds.includes(cardId)
-      )?.id;
+      const currentColumnId = board.columns.find((col) => col.cardIds.includes(cardId))?.id;
       const dropTarget = board.columns.find(
-        (col) =>
-          col.id === (over.id as string) ||
-          col.cardIds.includes(over.id as string)
+        (col) => col.id === (over.id as string) || col.cardIds.includes(over.id as string)
       );
-
       if (!currentColumnId || !dropTarget) return;
 
-      moveBoardCard(cardId, currentColumnId, dropTarget.id).catch(() => {
-        setDelayedError("Failed to move card");
-        setTimeout(() => setDelayedError(null), 4000);
-      });
+      moveBoardCard(cardId, currentColumnId, dropTarget.id).catch(() => showError("Failed to move card"));
     },
-    [board, moveBoardCard]
+    [board, moveBoardCard, showError]
   );
 
   const handleRenameColumn = useCallback(
     (columnId: string, title: string) => {
-      renameColumn(columnId, title).catch(() => {
-        setDelayedError("Failed to rename column");
-        setTimeout(() => setDelayedError(null), 4000);
-      });
+      renameColumn(columnId, title).catch(() => showError("Failed to rename column"));
     },
-    [renameColumn]
+    [renameColumn, showError]
   );
 
   const handleAddCard = useCallback(
     (columnId: string, title: string, details: string) => {
-      addCard(columnId, title, details).catch(() => {
-        setDelayedError("Failed to add card");
-        setTimeout(() => setDelayedError(null), 4000);
-      });
+      addCard(columnId, title, details).catch(() => showError("Failed to add card"));
     },
-    [addCard]
+    [addCard, showError]
   );
 
   const handleDeleteCard = useCallback(
-    (columnId: string, cardId: string) => {
-      deleteCard(cardId).catch(() => {
-        setDelayedError("Failed to delete card");
-        setTimeout(() => setDelayedError(null), 4000);
-      });
+    (_columnId: string, cardId: string) => {
+      deleteCard(cardId).catch(() => showError("Failed to delete card"));
     },
-    [deleteCard]
+    [deleteCard, showError]
   );
+
+  const handleDeleteColumn = useCallback(
+    (columnId: string) => {
+      deleteColumn(columnId).catch(() => showError("Failed to delete column"));
+    },
+    [deleteColumn, showError]
+  );
+
+  const startEditTitle = () => {
+    setTitleInput(boardTitle);
+    setEditingTitle(true);
+    setTimeout(() => titleInputRef.current?.select(), 0);
+  };
+
+  const commitTitleEdit = async () => {
+    setEditingTitle(false);
+    const trimmed = titleInput.trim();
+    if (!trimmed || trimmed === boardTitle || !boardId) return;
+    try {
+      await api.updateBoardTitle(boardId, trimmed);
+      await refetch();
+    } catch {
+      showError("Failed to rename board");
+    }
+  };
+
+  const handleAddColumn = async () => {
+    const title = newColumnTitle.trim();
+    if (!title) return;
+    try {
+      await addColumn(title);
+      setNewColumnTitle("");
+      setShowAddColumn(false);
+    } catch {
+      showError("Failed to add column");
+    }
+  };
 
   const activeCard = activeCardId ? cardsById[activeCardId] : null;
 
@@ -159,6 +208,39 @@ export const KanbanBoard = ({ onLogout }: KanbanBoardProps) => {
           </div>
 
           <div className="flex items-center gap-2">
+            {/* Board selector */}
+            {boardId && (
+              <BoardSelector
+                currentBoardId={boardId}
+                currentBoardTitle={boardTitle}
+                onSelectBoard={(id) => loadBoardById(id)}
+              />
+            )}
+
+            {/* Editable board title */}
+            {editingTitle ? (
+              <input
+                ref={titleInputRef}
+                value={titleInput}
+                onChange={(e) => setTitleInput(e.target.value)}
+                onBlur={commitTitleEdit}
+                onKeyDown={(e) => { if (e.key === "Enter") commitTitleEdit(); if (e.key === "Escape") setEditingTitle(false); }}
+                className="rounded-lg border border-[var(--primary-blue)] px-2 py-1 text-xs font-semibold text-[var(--navy-dark)] outline-none"
+                style={{ width: Math.max(80, titleInput.length * 7) }}
+              />
+            ) : (
+              <button
+                onClick={startEditTitle}
+                className="flex items-center gap-1 rounded-lg px-2 py-1.5 text-xs font-semibold text-[var(--navy-dark)] transition hover:bg-[var(--stroke)]"
+                title="Rename board"
+              >
+                <span>{boardTitle}</span>
+                <svg className="h-3 w-3 text-[var(--gray-text)]" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                </svg>
+              </button>
+            )}
+
             <button
               onClick={() => setIsChatOpen(!isChatOpen)}
               className={clsx(
@@ -193,7 +275,6 @@ export const KanbanBoard = ({ onLogout }: KanbanBoardProps) => {
 
       {/* Board + sidebar */}
       <div className="relative flex min-h-0 flex-1">
-        {/* Columns area */}
         <main className="min-w-0 flex-1 overflow-y-hidden overflow-x-auto p-5">
           <DndContext
             sensors={sensors}
@@ -202,8 +283,8 @@ export const KanbanBoard = ({ onLogout }: KanbanBoardProps) => {
             onDragEnd={handleDragEnd}
           >
             <div
-              className="grid h-full gap-4"
-              style={{ gridTemplateColumns: `repeat(${board.columns.length}, minmax(200px, 1fr))` }}
+              className="flex h-full gap-4"
+              style={{ minWidth: `${board.columns.length * 220 + 160}px` }}
             >
               {board.columns.map((column, index) => (
                 <KanbanColumn
@@ -214,9 +295,54 @@ export const KanbanBoard = ({ onLogout }: KanbanBoardProps) => {
                   onRename={handleRenameColumn}
                   onAddCard={handleAddCard}
                   onDeleteCard={handleDeleteCard}
+                  onDeleteColumn={handleDeleteColumn}
+                  canDelete={board.columns.length > 1}
                 />
               ))}
+
+              {/* Add column button */}
+              <div className="flex shrink-0 flex-col" style={{ width: 200 }}>
+                {showAddColumn ? (
+                  <div className="rounded-xl border border-[var(--stroke)] bg-white p-3">
+                    <input
+                      autoFocus
+                      type="text"
+                      value={newColumnTitle}
+                      onChange={(e) => setNewColumnTitle(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === "Enter") handleAddColumn(); if (e.key === "Escape") setShowAddColumn(false); }}
+                      placeholder="Column name"
+                      className="w-full rounded-lg border border-[var(--stroke)] px-3 py-2 text-sm outline-none focus:border-[var(--primary-blue)]"
+                    />
+                    <div className="mt-2 flex gap-2">
+                      <button
+                        onClick={handleAddColumn}
+                        disabled={!newColumnTitle.trim()}
+                        className="flex-1 rounded-lg bg-[var(--primary-blue)] py-1.5 text-xs font-semibold text-white disabled:opacity-50"
+                      >
+                        Add
+                      </button>
+                      <button
+                        onClick={() => { setShowAddColumn(false); setNewColumnTitle(""); }}
+                        className="flex-1 rounded-lg border border-[var(--stroke)] py-1.5 text-xs text-[var(--gray-text)]"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => setShowAddColumn(true)}
+                    className="flex h-full max-h-24 items-center justify-center gap-2 rounded-xl border-2 border-dashed border-[var(--stroke)] text-sm text-[var(--gray-text)] transition hover:border-[var(--primary-blue)] hover:text-[var(--primary-blue)]"
+                  >
+                    <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+                    </svg>
+                    Add column
+                  </button>
+                )}
+              </div>
             </div>
+
             <DragOverlay>
               {activeCard ? (
                 <div className="w-[220px]">
@@ -227,7 +353,7 @@ export const KanbanBoard = ({ onLogout }: KanbanBoardProps) => {
           </DndContext>
         </main>
 
-        {/* Sidebar panel — slides in by claiming width */}
+        {/* AI Sidebar */}
         <div
           className={clsx(
             "shrink-0 overflow-hidden border-l border-[var(--stroke)] bg-white transition-all duration-300 ease-in-out",
@@ -236,6 +362,7 @@ export const KanbanBoard = ({ onLogout }: KanbanBoardProps) => {
         >
           <AIChatSidebar
             boardData={board}
+            boardId={boardId ?? undefined}
             onBoardUpdate={refetch}
             isOpen={isChatOpen}
             onToggle={() => setIsChatOpen(false)}

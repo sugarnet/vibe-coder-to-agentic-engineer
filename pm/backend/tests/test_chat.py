@@ -1,58 +1,10 @@
-"""Unit and integration tests for chat functionality (Part 9)."""
+"""Unit and integration tests for chat functionality."""
 import pytest
 import json
 from unittest.mock import patch, AsyncMock, MagicMock
-from fastapi.testclient import TestClient
-from sqlalchemy import create_engine, event, Engine
-import sqlite3
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.pool import StaticPool
 
-from main import app, get_db
-from app.models import Base
 import chat
 from app.schemas import ChatResponse, BoardUpdateAction
-
-
-# ============= Fixtures =============
-
-@pytest.fixture(scope="function")
-def test_db():
-    """Create a fresh in-memory database for each test."""
-    engine = create_engine(
-        "sqlite:///:memory:",
-        connect_args={"check_same_thread": False},
-        poolclass=StaticPool
-    )
-
-    # Enable foreign keys
-    @event.listens_for(Engine, "connect")
-    def set_sqlite_pragma(dbapi_conn, connection_record):
-        if isinstance(dbapi_conn, sqlite3.Connection):
-            cursor = dbapi_conn.cursor()
-            cursor.execute("PRAGMA foreign_keys=ON")
-            cursor.close()
-
-    Base.metadata.create_all(bind=engine)
-
-    SessionLocal = sessionmaker(bind=engine)
-
-    def override_get_db():
-        db = SessionLocal()
-        try:
-            yield db
-        finally:
-            db.close()
-
-    app.dependency_overrides[get_db] = override_get_db
-    yield
-    app.dependency_overrides.clear()
-
-
-@pytest.fixture(scope="function")
-def client(test_db):
-    """Create test client with test database."""
-    return TestClient(app)
 
 
 # ============= Unit Tests for chat.py =============

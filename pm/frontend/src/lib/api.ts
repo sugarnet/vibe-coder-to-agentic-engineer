@@ -1,6 +1,5 @@
 /**
  * API client for Kanban backend
- * Handles all CRUD operations with authentication
  */
 
 import type { BoardData } from "@/lib/kanban";
@@ -8,16 +7,20 @@ import type { BoardData } from "@/lib/kanban";
 export type Card = {
   id: number;
   title: string;
-  details: string;
+  details: string | null;
   column_id: number;
   position: number;
+  priority?: "low" | "medium" | "high" | null;
+  due_date?: string | null;
+  color?: string | null;
 };
 
 export type Column = {
   id: number;
-  board_id: number;
+  board_id?: number;
   title: string;
   position: number;
+  cards?: Card[];
 };
 
 export type Board = {
@@ -26,17 +29,37 @@ export type Board = {
   title: string;
   columns: Column[];
   cards: Card[];
+  created_at?: string;
+  updated_at?: string;
+};
+
+export type BoardSummary = {
+  id: number;
+  user_id: number;
+  title: string;
+  created_at: string;
+  updated_at: string;
 };
 
 export type CardCreate = {
   column_id: number;
   title: string;
   details?: string;
+  priority?: "low" | "medium" | "high";
+  due_date?: string;
+  color?: string;
 };
 
 export type CardUpdate = {
   title?: string;
   details?: string;
+  priority?: "low" | "medium" | "high" | null;
+  due_date?: string | null;
+  color?: string | null;
+};
+
+export type BoardCreate = {
+  title: string;
 };
 
 export type BoardUpdate = {
@@ -52,6 +75,17 @@ export type BoardUpdate = {
   }>;
 };
 
+export type RegisterRequest = {
+  username: string;
+  password: string;
+};
+
+export type AuthResponse = {
+  username: string;
+  token: string;
+  user_id: number;
+};
+
 export class APIError extends Error {
   constructor(
     public status: number,
@@ -65,35 +99,24 @@ export class APIError extends Error {
 
 function getAuthToken(): string | null {
   try {
-    // Ensure we're in browser environment
-    if (typeof window === "undefined") {
-      return null;
-    }
+    if (typeof window === "undefined") return null;
     const stored = localStorage.getItem("kanban_auth");
     if (stored) {
       const parsed = JSON.parse(stored) as { token: string };
-      console.debug(`Auth token found: ${parsed.token.slice(0, 10)}...`);
       return parsed.token;
     }
-    console.debug("No auth token in localStorage");
-  } catch (err) {
-    console.error("Failed to get auth token:", err);
+  } catch {
+    // ignore
   }
   return null;
 }
 
 function getHeaders(includeAuth = true): HeadersInit {
-  const headers: HeadersInit = {
-    "Content-Type": "application/json",
-  };
-
+  const headers: HeadersInit = { "Content-Type": "application/json" };
   if (includeAuth) {
     const token = getAuthToken();
-    if (token) {
-      headers.Authorization = `Bearer ${token}`;
-    }
+    if (token) headers.Authorization = `Bearer ${token}`;
   }
-
   return headers;
 }
 
@@ -102,39 +125,124 @@ async function handleResponse<T>(response: Response): Promise<T> {
     let details: Record<string, unknown> = {};
     try {
       details = await response.json();
-    } catch (err) {
-      // Response body is not JSON
+    } catch {
+      // non-JSON response
     }
-
     const message =
       response.status === 401
         ? "Unauthorized - please log in again"
         : response.status === 403
           ? "Access forbidden - missing or invalid authorization"
-          : `API error: ${response.status}`;
-
-    console.error(`API Error ${response.status}:`, details);
-
+          : response.status === 409
+            ? ((details.detail as string) ?? "Conflict")
+            : `API error: ${response.status}`;
     throw new APIError(response.status, message, details);
   }
-
   return response.json() as Promise<T>;
 }
 
-/**
- * Fetch the user's board with all columns and cards
- */
-export async function fetchBoard(): Promise<Board> {
-  const response = await fetch("/api/user/board", {
-    method: "GET",
+// ====== Auth ======
+
+export async function register(input: RegisterRequest): Promise<AuthResponse> {
+  const response = await fetch("/api/register", {
+    method: "POST",
+    headers: getHeaders(false),
+    body: JSON.stringify(input),
+  });
+  return handleResponse<AuthResponse>(response);
+}
+
+export async function login(username: string, password: string): Promise<AuthResponse> {
+  const response = await fetch("/api/login", {
+    method: "POST",
+    headers: getHeaders(false),
+    body: JSON.stringify({ username, password }),
+  });
+  return handleResponse<AuthResponse>(response);
+}
+
+// ====== Boards ======
+
+export async function fetchBoards(): Promise<BoardSummary[]> {
+  const response = await fetch("/api/boards", { headers: getHeaders(true) });
+  return handleResponse<BoardSummary[]>(response);
+}
+
+export async function createBoard(input: BoardCreate): Promise<Board> {
+  const response = await fetch("/api/boards", {
+    method: "POST",
     headers: getHeaders(true),
+    body: JSON.stringify(input),
   });
   return handleResponse<Board>(response);
 }
 
-/**
- * Create a new card
- */
+export async function fetchBoardById(boardId: number): Promise<Board> {
+  const response = await fetch(`/api/boards/${boardId}`, { headers: getHeaders(true) });
+  return handleResponse<Board>(response);
+}
+
+export async function updateBoardTitle(boardId: number, title: string): Promise<BoardSummary> {
+  const response = await fetch(`/api/boards/${boardId}/title`, {
+    method: "PUT",
+    headers: getHeaders(true),
+    body: JSON.stringify({ title }),
+  });
+  return handleResponse<BoardSummary>(response);
+}
+
+export async function deleteBoard(boardId: number): Promise<void> {
+  const response = await fetch(`/api/boards/${boardId}`, {
+    method: "DELETE",
+    headers: getHeaders(true),
+  });
+  if (!response.ok) throw new APIError(response.status, `Failed to delete board ${boardId}`);
+}
+
+export async function fetchBoard(): Promise<Board> {
+  const response = await fetch("/api/user/board", { headers: getHeaders(true) });
+  return handleResponse<Board>(response);
+}
+
+export async function updateBoardById(boardId: number, updates: BoardUpdate): Promise<{ success: boolean }> {
+  const response = await fetch(`/api/boards/${boardId}`, {
+    method: "PUT",
+    headers: getHeaders(true),
+    body: JSON.stringify(updates),
+  });
+  return handleResponse<{ success: boolean }>(response);
+}
+
+export async function updateBoard(updates: BoardUpdate): Promise<{ success: boolean }> {
+  const response = await fetch("/api/board", {
+    method: "PUT",
+    headers: getHeaders(true),
+    body: JSON.stringify(updates),
+  });
+  return handleResponse<{ success: boolean }>(response);
+}
+
+// ====== Columns ======
+
+export async function addColumn(boardId: number, title: string): Promise<Column> {
+  const response = await fetch(`/api/boards/${boardId}/columns`, {
+    method: "POST",
+    headers: getHeaders(true),
+    body: JSON.stringify({ title }),
+  });
+  return handleResponse<Column>(response);
+}
+
+export async function deleteColumn(boardId: number, columnId: number): Promise<void> {
+  const response = await fetch(`/api/boards/${boardId}/columns/${columnId}`, {
+    method: "DELETE",
+    headers: getHeaders(true),
+  });
+  if (!response.ok) throw new APIError(response.status, `Failed to delete column ${columnId}`);
+}
+
+// ====== Cards ======
+
 export async function createCard(input: CardCreate): Promise<Card> {
   const response = await fetch("/api/cards", {
     method: "POST",
@@ -144,13 +252,7 @@ export async function createCard(input: CardCreate): Promise<Card> {
   return handleResponse<Card>(response);
 }
 
-/**
- * Update a card's title and/or details
- */
-export async function updateCard(
-  cardId: number,
-  input: CardUpdate,
-): Promise<Card> {
+export async function updateCard(cardId: number, input: CardUpdate): Promise<Card> {
   const response = await fetch(`/api/cards/${cardId}`, {
     method: "PUT",
     headers: getHeaders(true),
@@ -159,33 +261,15 @@ export async function updateCard(
   return handleResponse<Card>(response);
 }
 
-/**
- * Delete a card
- */
 export async function deleteCard(cardId: number): Promise<void> {
   const response = await fetch(`/api/cards/${cardId}`, {
     method: "DELETE",
     headers: getHeaders(true),
   });
-  if (!response.ok) {
-    throw new APIError(response.status, `Failed to delete card ${cardId}`);
-  }
+  if (!response.ok) throw new APIError(response.status, `Failed to delete card ${cardId}`);
 }
 
-/**
- * Update board state (bulk update for drag-drop)
- * Sends card positions for reordering
- */
-export async function updateBoard(
-  updates: BoardUpdate,
-): Promise<{ success: boolean }> {
-  const response = await fetch("/api/board", {
-    method: "PUT",
-    headers: getHeaders(true),
-    body: JSON.stringify(updates),
-  });
-  return handleResponse<{ success: boolean }>(response);
-}
+// ====== Chat ======
 
 export type ChatHistoryItem = {
   id: number;
@@ -196,7 +280,8 @@ export type ChatHistoryItem = {
 
 export type ChatRequest = {
   message: string;
-  board_state?: Record<string, any>;
+  board_state?: Record<string, unknown>;
+  board_id?: number;
 };
 
 export type ChatResponse = {
@@ -211,14 +296,11 @@ export type ChatResponse = {
   }>;
 };
 
-/**
- * Send a chat message to AI
- */
 export async function sendChatMessage(
   message: string,
   boardState: BoardData,
+  boardId?: number,
 ): Promise<ChatResponse> {
-  // Convert frontend BoardData format to backend expected format
   const backendBoardState = {
     columns: boardState.columns.map((col, index) => ({
       id: parseInt(col.id),
@@ -242,18 +324,14 @@ export async function sendChatMessage(
     body: JSON.stringify({
       message,
       board_state: backendBoardState,
+      board_id: boardId,
     } as ChatRequest),
   });
   return handleResponse<ChatResponse>(response);
 }
 
-/**
- * Fetch chat history
- */
-export async function fetchChatHistory(): Promise<ChatHistoryItem[]> {
-  const response = await fetch("/api/chat/history", {
-    method: "GET",
-    headers: getHeaders(true),
-  });
+export async function fetchChatHistory(boardId?: number): Promise<ChatHistoryItem[]> {
+  const url = boardId ? `/api/chat/history?board_id=${boardId}` : "/api/chat/history";
+  const response = await fetch(url, { headers: getHeaders(true) });
   return handleResponse<ChatHistoryItem[]>(response);
 }

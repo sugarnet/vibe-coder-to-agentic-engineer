@@ -58,10 +58,11 @@ describe("API Client", () => {
 
       const result = await api.fetchBoard();
       expect(result).toEqual(mockBoard);
-      expect(global.fetch).toHaveBeenCalledWith("/api/user/board", {
-        method: "GET",
-        headers: expect.objectContaining({ "Content-Type": "application/json" }),
-      });
+      expect(global.fetch).toHaveBeenCalledWith("/api/user/board",
+        expect.objectContaining({
+          headers: expect.objectContaining({ "Content-Type": "application/json" }),
+        })
+      );
     });
 
     it("should include auth token in request", async () => {

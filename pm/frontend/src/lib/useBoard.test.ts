@@ -201,7 +201,7 @@ describe("useBoard", () => {
 
   it("should rename column optimistically", async () => {
     vi.mocked(api.fetchBoard).mockResolvedValueOnce(mockBoardData);
-    vi.mocked(api.updateBoard).mockResolvedValueOnce({ success: true });
+    vi.mocked(api.updateBoardById).mockResolvedValueOnce({ success: true });
 
     const { result } = renderHook(() => useBoard());
 
@@ -213,17 +213,16 @@ describe("useBoard", () => {
 
     await result.current.renameColumn("1", "New Title");
 
-    // Should update through optimistic update or API
     await waitFor(() => {
       expect(result.current.board!.columns[0].title).toBe("New Title");
     });
 
-    expect(api.updateBoard).toHaveBeenCalled();
+    expect(api.updateBoardById).toHaveBeenCalled();
   });
 
   it("should move card between columns", async () => {
     vi.mocked(api.fetchBoard).mockResolvedValueOnce(mockBoardData);
-    vi.mocked(api.updateBoard).mockResolvedValueOnce({ success: true });
+    vi.mocked(api.updateBoardById).mockResolvedValueOnce({ success: true });
 
     const { result } = renderHook(() => useBoard());
 
@@ -233,8 +232,7 @@ describe("useBoard", () => {
 
     await result.current.moveCard("1", "1", "2");
 
-    // Update should be called
-    expect(api.updateBoard).toHaveBeenCalled();
+    expect(api.updateBoardById).toHaveBeenCalled();
   });
 
   it("should retry loading board", async () => {

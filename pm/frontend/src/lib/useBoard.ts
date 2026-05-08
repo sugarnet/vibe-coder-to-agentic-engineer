@@ -1,6 +1,5 @@
 /**
  * useBoard hook - manages board state with backend API
- * Handles fetching, creating, updating, and deleting cards
  */
 
 import { useCallback, useEffect, useState } from "react";
@@ -13,26 +12,23 @@ import {
 
 export type UseBoard = {
   board: BoardData | null;
+  boardId: number | null;
+  boardTitle: string;
   isLoading: boolean;
   error: string | null;
   addCard: (columnId: string, title: string, details: string) => Promise<void>;
   updateCard: (cardId: string, title: string, details: string) => Promise<void>;
   deleteCard: (cardId: string) => Promise<void>;
   renameColumn: (columnId: string, title: string) => Promise<void>;
-  moveCard: (
-    cardId: string,
-    fromColumnId: string,
-    toColumnId: string,
-  ) => Promise<void>;
+  addColumn: (title: string) => Promise<void>;
+  deleteColumn: (columnId: string) => Promise<void>;
+  moveCard: (cardId: string, fromColumnId: string, toColumnId: string) => Promise<void>;
   retry: () => Promise<void>;
   refetch: () => Promise<void>;
+  loadBoardById: (boardId: number) => Promise<void>;
 };
 
-/**
- * Convert API Board to local BoardData format
- */
 function convertApiToLocal(apiBoardData: api.Board): BoardData {
-  // Build columns in the order returned by API
   const columns: LocalColumn[] = apiBoardData.columns.map((col) => ({
     id: col.id.toString(),
     title: col.title,
@@ -42,45 +38,45 @@ function convertApiToLocal(apiBoardData: api.Board): BoardData {
       .map((card) => card.id.toString()),
   }));
 
-  // Build cards map
   const cards: Record<string, LocalCard> = {};
   apiBoardData.cards.forEach((card) => {
     cards[card.id.toString()] = {
       id: card.id.toString(),
       title: card.title,
       details: card.details || "",
+      priority: card.priority ?? undefined,
+      due_date: card.due_date ?? undefined,
+      color: card.color ?? undefined,
     };
   });
 
   return { columns, cards };
 }
 
-/**
- * Convert local CardId to API numeric ID
- */
 function toApiCardId(cardId: string): number {
   return parseInt(cardId, 10);
 }
 
-/**
- * Convert local ColumnId to API numeric ID
- */
 function toApiColumnId(columnId: string): number {
   return parseInt(columnId, 10);
 }
 
-export const useBoard = (): UseBoard => {
+export const useBoard = (initialBoardId?: number): UseBoard => {
   const [board, setBoard] = useState<BoardData | null>(null);
+  const [boardId, setBoardId] = useState<number | null>(initialBoardId ?? null);
+  const [boardTitle, setBoardTitle] = useState<string>("");
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const loadBoard = useCallback(async () => {
+  const loadBoard = useCallback(async (id?: number) => {
     setIsLoading(true);
     setError(null);
     try {
-      const apiBoardData = await api.fetchBoard();
+      const apiBoardData = id ? await api.fetchBoardById(id) : await api.fetchBoard();
       const localBoard = convertApiToLocal(apiBoardData);
       setBoard(localBoard);
+      setBoardId(apiBoardData.id);
+      setBoardTitle(apiBoardData.title);
     } catch (err) {
       const message =
         err instanceof api.APIError
@@ -94,23 +90,24 @@ export const useBoard = (): UseBoard => {
     }
   }, []);
 
-  // Load board on mount
   useEffect(() => {
-    loadBoard();
-  }, [loadBoard]);
+    loadBoard(initialBoardId);
+  }, [loadBoard, initialBoardId]);
+
+  const loadBoardById = useCallback(
+    async (id: number) => {
+      await loadBoard(id);
+    },
+    [loadBoard],
+  );
 
   const addCard = useCallback(
     async (columnId: string, title: string, details: string) => {
       if (!board) return;
 
       const optimisticId = `temp-${Date.now()}`;
-      const optimisticCard: LocalCard = {
-        id: optimisticId,
-        title,
-        details,
-      };
+      const optimisticCard: LocalCard = { id: optimisticId, title, details };
 
-      // Optimistic update
       setBoard((prev) => {
         if (!prev) return prev;
         return {
@@ -131,7 +128,6 @@ export const useBoard = (): UseBoard => {
           details,
         });
 
-        // Replace temp card with real one
         setBoard((prev) => {
           if (!prev) return prev;
           const newCards = { ...prev.cards };
@@ -140,6 +136,9 @@ export const useBoard = (): UseBoard => {
             id: apiCard.id.toString(),
             title: apiCard.title,
             details: apiCard.details || "",
+            priority: apiCard.priority ?? undefined,
+            due_date: apiCard.due_date ?? undefined,
+            color: apiCard.color ?? undefined,
           };
 
           return {
@@ -158,28 +157,21 @@ export const useBoard = (): UseBoard => {
           };
         });
       } catch (err) {
-        // Revert optimistic update
         setBoard((prev) => {
           if (!prev) return prev;
           const newCards = { ...prev.cards };
           delete newCards[optimisticId];
-
           return {
             ...prev,
             cards: newCards,
             columns: prev.columns.map((col) =>
               col.id === columnId
-                ? {
-                    ...col,
-                    cardIds: col.cardIds.filter((id) => id !== optimisticId),
-                  }
+                ? { ...col, cardIds: col.cardIds.filter((id) => id !== optimisticId) }
                 : col,
             ),
           };
         });
-
-        const message =
-          err instanceof Error ? err.message : "Failed to add card";
+        const message = err instanceof Error ? err.message : "Failed to add card";
         setError(message);
         throw err;
       }
@@ -190,36 +182,22 @@ export const useBoard = (): UseBoard => {
   const updateCard = useCallback(
     async (cardId: string, title: string, details: string) => {
       if (!board) return;
-
       const oldCard = board.cards[cardId];
       if (!oldCard) return;
 
-      // Optimistic update
       setBoard((prev) => {
         if (!prev) return prev;
-        return {
-          ...prev,
-          cards: {
-            ...prev.cards,
-            [cardId]: { ...prev.cards[cardId]!, title, details },
-          },
-        };
+        return { ...prev, cards: { ...prev.cards, [cardId]: { ...prev.cards[cardId]!, title, details } } };
       });
 
       try {
         await api.updateCard(toApiCardId(cardId), { title, details });
       } catch (err) {
-        // Revert optimistic update
         setBoard((prev) => {
           if (!prev) return prev;
-          return {
-            ...prev,
-            cards: { ...prev.cards, [cardId]: oldCard },
-          };
+          return { ...prev, cards: { ...prev.cards, [cardId]: oldCard } };
         });
-
-        const message =
-          err instanceof Error ? err.message : "Failed to update card";
+        const message = err instanceof Error ? err.message : "Failed to update card";
         setError(message);
         throw err;
       }
@@ -230,25 +208,18 @@ export const useBoard = (): UseBoard => {
   const deleteCard = useCallback(
     async (cardId: string) => {
       if (!board) return;
-
-      const columnId = board.columns.find((col) =>
-        col.cardIds.includes(cardId),
-      )?.id;
+      const columnId = board.columns.find((col) => col.cardIds.includes(cardId))?.id;
       if (!columnId) return;
 
-      // Optimistic update
       setBoard((prev) => {
         if (!prev) return prev;
         const newCards = { ...prev.cards };
         delete newCards[cardId];
-
         return {
           ...prev,
           cards: newCards,
           columns: prev.columns.map((col) =>
-            col.id === columnId
-              ? { ...col, cardIds: col.cardIds.filter((id) => id !== cardId) }
-              : col,
+            col.id === columnId ? { ...col, cardIds: col.cardIds.filter((id) => id !== cardId) } : col,
           ),
         };
       });
@@ -256,38 +227,27 @@ export const useBoard = (): UseBoard => {
       try {
         await api.deleteCard(toApiCardId(cardId));
       } catch (err) {
-        // Revert optimistic update
-        await loadBoard();
-
-        const message =
-          err instanceof Error ? err.message : "Failed to delete card";
+        await loadBoard(boardId ?? undefined);
+        const message = err instanceof Error ? err.message : "Failed to delete card";
         setError(message);
         throw err;
       }
     },
-    [board, loadBoard],
+    [board, boardId, loadBoard],
   );
 
   const renameColumn = useCallback(
     async (columnId: string, title: string) => {
-      if (!board) return;
-
+      if (!board || !boardId) return;
       const oldColumn = board.columns.find((col) => col.id === columnId);
       if (!oldColumn) return;
 
-      // Optimistic update
       setBoard((prev) => {
         if (!prev) return prev;
-        return {
-          ...prev,
-          columns: prev.columns.map((col) =>
-            col.id === columnId ? { ...col, title } : col,
-          ),
-        };
+        return { ...prev, columns: prev.columns.map((col) => (col.id === columnId ? { ...col, title } : col)) };
       });
 
       try {
-        // Send all column and card positions to backend
         const updates: api.BoardUpdate = {
           columns: board.columns.map((col, idx) => ({
             id: toApiColumnId(col.id),
@@ -302,66 +262,84 @@ export const useBoard = (): UseBoard => {
             })),
           ),
         };
-
-        await api.updateBoard(updates);
+        await api.updateBoardById(boardId, updates);
       } catch (err) {
-        // Revert optimistic update
         setBoard((prev) => {
           if (!prev) return prev;
-          return {
-            ...prev,
-            columns: prev.columns.map((col) =>
-              col.id === columnId ? oldColumn : col,
-            ),
-          };
+          return { ...prev, columns: prev.columns.map((col) => (col.id === columnId ? oldColumn : col)) };
         });
-
-        const message =
-          err instanceof Error ? err.message : "Failed to rename column";
+        const message = err instanceof Error ? err.message : "Failed to rename column";
         setError(message);
         throw err;
       }
     },
-    [board],
+    [board, boardId],
+  );
+
+  const addColumn = useCallback(
+    async (title: string) => {
+      if (!boardId) return;
+      try {
+        const newCol = await api.addColumn(boardId, title);
+        setBoard((prev) => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            columns: [...prev.columns, { id: newCol.id.toString(), title: newCol.title, cardIds: [] }],
+          };
+        });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Failed to add column";
+        setError(message);
+        throw err;
+      }
+    },
+    [boardId],
+  );
+
+  const deleteColumn = useCallback(
+    async (columnId: string) => {
+      if (!boardId || !board) return;
+      const backupBoard = board;
+
+      setBoard((prev) => {
+        if (!prev) return prev;
+        return { ...prev, columns: prev.columns.filter((col) => col.id !== columnId) };
+      });
+
+      try {
+        await api.deleteColumn(boardId, toApiColumnId(columnId));
+      } catch (err) {
+        setBoard(backupBoard);
+        const message = err instanceof Error ? err.message : "Failed to delete column";
+        setError(message);
+        throw err;
+      }
+    },
+    [board, boardId],
   );
 
   const moveCard = useCallback(
     async (cardId: string, fromColumnId: string, toColumnId: string) => {
-      if (!board) return;
-
+      if (!board || !boardId) return;
       const backupBoard = board;
 
-      // Calculate the expected board state after the move
       const expectedColumns = board.columns.map((col) => {
         if (col.id === fromColumnId) {
-          // Remove card from source column
-          return {
-            ...col,
-            cardIds: col.cardIds.filter((id) => id !== cardId),
-          };
+          return { ...col, cardIds: col.cardIds.filter((id) => id !== cardId) };
         }
         if (col.id === toColumnId) {
-          // Add card to destination column at the end
-          return {
-            ...col,
-            cardIds: [...col.cardIds, cardId],
-          };
+          return { ...col, cardIds: [...col.cardIds, cardId] };
         }
         return col;
       });
 
-      // Optimistic update - move card to new column and recalculate positions
       setBoard((prev) => {
         if (!prev) return prev;
-        return {
-          ...prev,
-          columns: expectedColumns,
-        };
+        return { ...prev, columns: expectedColumns };
       });
 
       try {
-        // Send all column and card positions to backend
-        // Only include cards with valid numeric IDs (exclude optimistic temp IDs)
         const validCards = expectedColumns.flatMap((col) =>
           col.cardIds
             .filter((id) => !id.startsWith("temp-"))
@@ -372,10 +350,7 @@ export const useBoard = (): UseBoard => {
             })),
         );
 
-        if (validCards.length === 0) {
-          // No valid cards to update, skip API call
-          return;
-        }
+        if (validCards.length === 0) return;
 
         const updates: api.BoardUpdate = {
           columns: expectedColumns.map((col, idx) => ({
@@ -386,30 +361,32 @@ export const useBoard = (): UseBoard => {
           cards: validCards,
         };
 
-        await api.updateBoard(updates);
+        await api.updateBoardById(boardId, updates);
       } catch (err) {
-        // Revert optimistic update
         setBoard(backupBoard);
-
-        const message =
-          err instanceof Error ? err.message : "Failed to move card";
+        const message = err instanceof Error ? err.message : "Failed to move card";
         setError(message);
         throw err;
       }
     },
-    [board],
+    [board, boardId],
   );
 
   return {
     board,
+    boardId,
+    boardTitle,
     isLoading,
     error,
     addCard,
     updateCard,
     deleteCard,
     renameColumn,
+    addColumn,
+    deleteColumn,
     moveCard,
-    retry: loadBoard,
-    refetch: loadBoard,
+    retry: () => loadBoard(boardId ?? undefined),
+    refetch: () => loadBoard(boardId ?? undefined),
+    loadBoardById,
   };
 };

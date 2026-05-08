@@ -8,6 +8,9 @@ from pydantic import BaseModel, Field, computed_field
 class CardBase(BaseModel):
     title: str = Field(..., min_length=1, max_length=255)
     details: Optional[str] = None
+    priority: Optional[str] = Field(None, pattern="^(low|medium|high)$")
+    due_date: Optional[str] = Field(None, pattern=r"^\d{4}-\d{2}-\d{2}$")
+    color: Optional[str] = Field(None, max_length=20)
 
 
 class CardCreate(CardBase):
@@ -17,6 +20,9 @@ class CardCreate(CardBase):
 class CardUpdate(BaseModel):
     title: Optional[str] = Field(None, min_length=1, max_length=255)
     details: Optional[str] = None
+    priority: Optional[str] = Field(None, pattern="^(low|medium|high)$")
+    due_date: Optional[str] = Field(None, pattern=r"^\d{4}-\d{2}-\d{2}$")
+    color: Optional[str] = Field(None, max_length=20)
 
 
 class CardResponse(CardBase):
@@ -55,6 +61,10 @@ class ColumnResponse(ColumnBase):
 
 
 # Board schemas
+class BoardCreate(BaseModel):
+    title: str = Field(..., min_length=1, max_length=255)
+
+
 class BoardResponse(BaseModel):
     id: int
     title: str
@@ -66,11 +76,21 @@ class BoardResponse(BaseModel):
     @computed_field
     @property
     def cards(self) -> List[CardResponse]:
-        """Flatten all cards from all columns into a single array."""
         all_cards: List[CardResponse] = []
         for column in self.columns:
             all_cards.extend(column.cards)
         return all_cards
+
+    class Config:
+        from_attributes = True
+
+
+class BoardSummary(BaseModel):
+    id: int
+    title: str
+    user_id: int
+    created_at: datetime
+    updated_at: datetime
 
     class Config:
         from_attributes = True
@@ -102,6 +122,11 @@ class BoardUpdateResponse(BaseModel):
 
 
 # User schemas
+class UserCreate(BaseModel):
+    username: str = Field(..., min_length=3, max_length=50, pattern=r"^[a-zA-Z0-9_-]+$")
+    password: str = Field(..., min_length=6, max_length=100)
+
+
 class UserResponse(BaseModel):
     id: int
     username: str
@@ -111,7 +136,7 @@ class UserResponse(BaseModel):
         from_attributes = True
 
 
-# Login schemas (already defined, but with Pydantic v2 syntax)
+# Login schemas
 class LoginRequest(BaseModel):
     username: str
     password: str
@@ -123,9 +148,15 @@ class LoginResponse(BaseModel):
     user_id: int
 
 
+class RegisterResponse(BaseModel):
+    username: str
+    token: str
+    user_id: int
+
+
 # Chat schemas
 class ChatMessage(BaseModel):
-    role: str  # "user" or "assistant"
+    role: str
     content: str
 
 
@@ -141,15 +172,15 @@ class ChatHistoryResponse(BaseModel):
 
 class ChatRequest(BaseModel):
     message: str = Field(..., min_length=1)
-    board_state: Optional[dict] = None  # Current board state for context
+    board_state: Optional[dict] = None
+    board_id: Optional[int] = None  # Which board to use; defaults to first board
 
 
 class BoardUpdateAction(BaseModel):
-    """Individual board update action from AI."""
     action: str = Field(..., description="Action type: create_card, move_card, delete_card")
     card_id: Optional[int] = None
     column_id: Optional[int] = None
-    target_column_id: Optional[int] = None  # For move_card
+    target_column_id: Optional[int] = None
     title: Optional[str] = None
     details: Optional[str] = None
 

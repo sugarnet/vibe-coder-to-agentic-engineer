@@ -5,7 +5,7 @@ import { LoginForm } from "@/components/LoginForm";
 import { KanbanBoard } from "@/components/KanbanBoard";
 
 export default function Home() {
-  const { isAuthenticated, isLoading, error, login, logout } = useAuth();
+  const { isAuthenticated, isLoading, error, login, register, logout } = useAuth();
 
   if (isLoading) {
     return (
@@ -21,9 +21,8 @@ export default function Home() {
   if (!isAuthenticated) {
     return (
       <LoginForm
-        onLogin={async (username, password) => {
-          await login(username, password);
-        }}
+        onLogin={async (username, password) => { await login(username, password); }}
+        onRegister={async (username, password) => { await register(username, password); }}
         error={error || undefined}
       />
     );

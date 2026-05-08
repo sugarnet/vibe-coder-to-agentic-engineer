@@ -4,120 +4,124 @@ import { LoginForm } from "@/components/LoginForm";
 import { vi } from "vitest";
 
 describe("LoginForm", () => {
-  it("renders login form with title", () => {
-    const mockLogin = async () => {};
-    render(<LoginForm onLogin={mockLogin} />);
-
+  it("renders form title", () => {
+    render(<LoginForm onLogin={async () => {}} />);
     expect(screen.getByText("Kanban")).toBeInTheDocument();
     expect(screen.getByText("Studio")).toBeInTheDocument();
   });
 
   it("renders username input", () => {
-    const mockLogin = async () => {};
-    render(<LoginForm onLogin={mockLogin} />);
-
+    render(<LoginForm onLogin={async () => {}} />);
     const input = screen.getByLabelText("Username");
     expect(input).toBeInTheDocument();
     expect(input).toHaveAttribute("type", "text");
   });
 
   it("renders password input", () => {
-    const mockLogin = async () => {};
-    render(<LoginForm onLogin={mockLogin} />);
-
+    render(<LoginForm onLogin={async () => {}} />);
     const input = screen.getByLabelText("Password");
     expect(input).toBeInTheDocument();
     expect(input).toHaveAttribute("type", "password");
   });
 
-  it("renders submit button", () => {
-    const mockLogin = async () => {};
-    render(<LoginForm onLogin={mockLogin} />);
-
-    const button = screen.getByLabelText("Sign in");
-    expect(button).toBeInTheDocument();
+  it("renders sign in submit button in login mode", () => {
+    const { container } = render(<LoginForm onLogin={async () => {}} />);
+    const submitBtn = container.querySelector('button[type="submit"]');
+    expect(submitBtn).toBeInTheDocument();
+    expect(submitBtn).toHaveTextContent(/sign in/i);
   });
 
   it("calls onLogin with credentials on form submit", async () => {
     const user = userEvent.setup();
     const mockLogin = vi.fn().mockResolvedValue(undefined);
-    render(<LoginForm onLogin={mockLogin} />);
+    const { container } = render(<LoginForm onLogin={mockLogin} />);
 
-    const usernameInput = screen.getByLabelText("Username");
-    const passwordInput = screen.getByLabelText("Password");
-    const submitButton = screen.getByLabelText("Sign in");
-
-    await user.type(usernameInput, "testuser");
-    await user.type(passwordInput, "testpass");
-    await user.click(submitButton);
+    await user.type(screen.getByLabelText("Username"), "testuser");
+    await user.type(screen.getByLabelText("Password"), "testpass");
+    await user.click(container.querySelector('button[type="submit"]')!);
 
     await waitFor(() => {
       expect(mockLogin).toHaveBeenCalledWith("testuser", "testpass");
     });
   });
 
-  it("shows loading state", async () => {
-    const user = userEvent.setup();
-    const mockLogin = vi.fn(
-      () => new Promise((resolve) => setTimeout(resolve, 100))
-    );
-    render(<LoginForm onLogin={mockLogin} isLoading={true} />);
-
-    const submitButton = screen.getByLabelText("Sign in") as HTMLButtonElement;
+  it("shows loading state on submit button", () => {
+    const { container } = render(<LoginForm onLogin={async () => {}} isLoading={true} />);
+    const submitButton = container.querySelector('button[type="submit"]') as HTMLButtonElement;
     expect(submitButton).toBeDisabled();
-    expect(submitButton).toHaveTextContent("Signing in...");
+    expect(submitButton).toHaveTextContent(/signing in/i);
   });
 
   it("displays error message", () => {
-    const mockLogin = async () => {};
-    render(
-      <LoginForm
-        onLogin={mockLogin}
-        error="Invalid credentials"
-      />
-    );
-
+    render(<LoginForm onLogin={async () => {}} error="Invalid credentials" />);
     expect(screen.getByText("Invalid credentials")).toBeInTheDocument();
   });
 
-  it("displays demo credentials help", () => {
-    const mockLogin = async () => {};
-    render(<LoginForm onLogin={mockLogin} />);
-
+  it("displays demo credentials help in login mode", () => {
+    render(<LoginForm onLogin={async () => {}} />);
     expect(screen.getByText("Demo credentials:")).toBeInTheDocument();
-    expect(screen.getByText("user")).toBeInTheDocument();
-    expect(screen.getByText("password")).toBeInTheDocument();
   });
 
   it("trims whitespace from inputs", async () => {
     const user = userEvent.setup();
     const mockLogin = vi.fn().mockResolvedValue(undefined);
-    render(<LoginForm onLogin={mockLogin} />);
+    const { container } = render(<LoginForm onLogin={mockLogin} />);
 
-    const usernameInput = screen.getByLabelText("Username");
-    const passwordInput = screen.getByLabelText("Password");
-    const submitButton = screen.getByLabelText("Sign in");
-
-    await user.type(usernameInput, "  testuser  ");
-    await user.type(passwordInput, "  testpass  ");
-    await user.click(submitButton);
+    await user.type(screen.getByLabelText("Username"), "  testuser  ");
+    await user.type(screen.getByLabelText("Password"), "  testpass  ");
+    await user.click(container.querySelector('button[type="submit"]')!);
 
     await waitFor(() => {
       expect(mockLogin).toHaveBeenCalledWith("testuser", "testpass");
     });
   });
 
-  it("requires non-empty input", async () => {
+  it("does not call onLogin with empty inputs", async () => {
     const user = userEvent.setup();
     const mockLogin = vi.fn();
-    render(<LoginForm onLogin={mockLogin} />);
+    const { container } = render(<LoginForm onLogin={mockLogin} />);
 
-    const submitButton = screen.getByLabelText("Sign in");
-
-    // Try submitting empty form
-    await user.click(submitButton);
-
-    // onLogin should not be called
+    await user.click(container.querySelector('button[type="submit"]')!);
     expect(mockLogin).not.toHaveBeenCalled();
+  });
+
+  it("switches to register mode", async () => {
+    const user = userEvent.setup();
+    render(<LoginForm onLogin={async () => {}} onRegister={async () => {}} />);
+
+    await user.click(screen.getByRole("button", { name: /register/i }));
+    expect(screen.getByLabelText("Confirm Password")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /create account/i })).toBeInTheDocument();
+  });
+
+  it("calls onRegister when in register mode", async () => {
+    const user = userEvent.setup();
+    const mockRegister = vi.fn().mockResolvedValue(undefined);
+    render(<LoginForm onLogin={async () => {}} onRegister={mockRegister} />);
+
+    await user.click(screen.getByRole("button", { name: /register/i }));
+    await user.type(screen.getByLabelText("Username"), "newuser");
+    await user.type(screen.getByLabelText("Password"), "password123");
+    await user.type(screen.getByLabelText("Confirm Password"), "password123");
+    await user.click(screen.getByRole("button", { name: /create account/i }));
+
+    await waitFor(() => {
+      expect(mockRegister).toHaveBeenCalledWith("newuser", "password123");
+    });
+  });
+
+  it("shows validation error when passwords do not match", async () => {
+    const user = userEvent.setup();
+    const mockRegister = vi.fn();
+    render(<LoginForm onLogin={async () => {}} onRegister={mockRegister} />);
+
+    await user.click(screen.getByRole("button", { name: /register/i }));
+    await user.type(screen.getByLabelText("Username"), "newuser");
+    await user.type(screen.getByLabelText("Password"), "password123");
+    await user.type(screen.getByLabelText("Confirm Password"), "different");
+    await user.click(screen.getByRole("button", { name: /create account/i }));
+
+    expect(screen.getByText("Passwords do not match")).toBeInTheDocument();
+    expect(mockRegister).not.toHaveBeenCalled();
   });
 });

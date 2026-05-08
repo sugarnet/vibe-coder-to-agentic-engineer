@@ -1,22 +1,19 @@
 import { useCallback, useEffect, useState } from "react";
+import * as api from "@/lib/api";
 
 export type User = {
   username: string;
   token: string;
+  user_id?: number;
 };
 
 const AUTH_STORAGE_KEY = "kanban_auth";
 
-/**
- * useAuth hook - manages authentication state
- * Persists to localStorage for session persistence
- */
 export const useAuth = () => {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Load auth from localStorage on mount
   useEffect(() => {
     try {
       const stored = localStorage.getItem(AUTH_STORAGE_KEY);
@@ -24,8 +21,8 @@ export const useAuth = () => {
         const parsed = JSON.parse(stored) as User;
         setUser(parsed);
       }
-    } catch (err) {
-      console.error("Failed to load auth from localStorage:", err);
+    } catch {
+      // ignore
     } finally {
       setIsLoading(false);
     }
@@ -34,34 +31,35 @@ export const useAuth = () => {
   const login = useCallback(async (username: string, password: string) => {
     setIsLoading(true);
     setError(null);
-
     try {
-      // Call backend login endpoint
-      const response = await fetch("/api/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, password }),
-      });
-
-      if (!response.ok) {
-        const data = await response.json().catch(() => ({}));
-        throw new Error(data.detail || "Login failed");
-      }
-
-      const data = (await response.json()) as {
-        username: string;
-        token: string;
-      };
-      const userData: User = {
-        username: data.username,
-        token: data.token,
-      };
-
-      // Save to localStorage
+      const data = await api.login(username, password);
+      const userData: User = { username: data.username, token: data.token, user_id: data.user_id };
       localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(userData));
       setUser(userData);
     } catch (err) {
-      const message = err instanceof Error ? err.message : "An error occurred";
+      const message = err instanceof Error ? err.message : "Login failed";
+      setError(message);
+      throw err;
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  const register = useCallback(async (username: string, password: string) => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const data = await api.register({ username, password });
+      const userData: User = { username: data.username, token: data.token, user_id: data.user_id };
+      localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(userData));
+      setUser(userData);
+    } catch (err) {
+      const message =
+        err instanceof api.APIError && err.status === 409
+          ? "Username already taken"
+          : err instanceof Error
+            ? err.message
+            : "Registration failed";
       setError(message);
       throw err;
     } finally {
@@ -81,6 +79,7 @@ export const useAuth = () => {
     isAuthenticated: !!user,
     error,
     login,
+    register,
     logout,
   };
 };
