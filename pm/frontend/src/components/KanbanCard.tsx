@@ -1,9 +1,9 @@
-import { useState } from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import clsx from "clsx";
-import type { Card } from "@/lib/kanban";
+import { useState } from "react";
 import * as api from "@/lib/api";
+import type { Card } from "@/lib/kanban";
 
 type KanbanCardProps = {
   card: Card;
@@ -11,24 +11,30 @@ type KanbanCardProps = {
   onUpdate?: (cardId: string, updates: api.CardUpdate) => void;
 };
 
-const PRIORITY_STYLES: Record<string, { label: string; className: string }> = {
+type PriorityStyle = { label: string; className: string };
+
+const PRIORITY_STYLES: Record<string, PriorityStyle> = {
   high: { label: "High", className: "bg-red-100 text-red-700" },
   medium: { label: "Med", className: "bg-yellow-100 text-yellow-700" },
   low: { label: "Low", className: "bg-green-100 text-green-600" },
 };
 
+const MS_PER_DAY = 86_400_000;
+
 function formatDueDate(dateStr: string): { text: string; overdue: boolean } {
-  const due = new Date(dateStr + "T00:00:00");
+  const due = new Date(`${dateStr}T00:00:00`);
   const today = new Date();
   today.setHours(0, 0, 0, 0);
+  const diff = Math.round((due.getTime() - today.getTime()) / MS_PER_DAY);
   const overdue = due < today;
-  const diff = Math.round((due.getTime() - today.getTime()) / 86400000);
+
   let text: string;
   if (diff === 0) text = "Today";
   else if (diff === 1) text = "Tomorrow";
   else if (diff === -1) text = "Yesterday";
   else if (diff > 0 && diff <= 7) text = `In ${diff}d`;
   else text = due.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+
   return { text, overdue };
 }
 
@@ -43,16 +49,27 @@ export const KanbanCard = ({ card, onDelete, onUpdate }: KanbanCardProps) => {
   const [editDueDate, setEditDueDate] = useState(card.due_date || "");
   const [saving, setSaving] = useState(false);
 
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-  };
-
+  const style = { transform: CSS.Transform.toString(transform), transition };
   const dueInfo = card.due_date ? formatDueDate(card.due_date) : null;
   const priority = card.priority ? PRIORITY_STYLES[card.priority] : null;
 
+  const resetEdit = () => {
+    setEditTitle(card.title);
+    setEditDetails(card.details || "");
+    setEditPriority(card.priority || "");
+    setEditDueDate(card.due_date || "");
+  };
+
+  const cancelEdit = () => {
+    setEditing(false);
+    resetEdit();
+  };
+
   const handleSave = async () => {
-    if (!editTitle.trim() || !onUpdate) { setEditing(false); return; }
+    if (!editTitle.trim() || !onUpdate) {
+      setEditing(false);
+      return;
+    }
     setSaving(true);
     try {
       await onUpdate(card.id, {
@@ -67,22 +84,11 @@ export const KanbanCard = ({ card, onDelete, onUpdate }: KanbanCardProps) => {
     }
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Escape") { setEditing(false); resetEdit(); }
-  };
-
-  const resetEdit = () => {
-    setEditTitle(card.title);
-    setEditDetails(card.details || "");
-    setEditPriority(card.priority || "");
-    setEditDueDate(card.due_date || "");
-  };
-
   if (editing) {
     return (
       <article
         className="rounded-xl border border-[var(--primary-blue)] bg-white px-3 py-3 shadow-[0_4px_12px_rgba(3,33,71,0.1)]"
-        onKeyDown={handleKeyDown}
+        onKeyDown={(e) => { if (e.key === "Escape") cancelEdit(); }}
       >
         <input
           autoFocus
@@ -125,7 +131,7 @@ export const KanbanCard = ({ card, onDelete, onUpdate }: KanbanCardProps) => {
             {saving ? "Saving..." : "Save"}
           </button>
           <button
-            onClick={() => { setEditing(false); resetEdit(); }}
+            onClick={cancelEdit}
             className="flex-1 rounded-lg border border-[var(--stroke)] py-1.5 text-xs text-[var(--gray-text)]"
           >
             Cancel
@@ -143,7 +149,7 @@ export const KanbanCard = ({ card, onDelete, onUpdate }: KanbanCardProps) => {
         "group relative rounded-xl border border-transparent bg-white px-4 py-3",
         "shadow-[0_4px_12px_rgba(3,33,71,0.06)] hover:shadow-[0_6px_20px_rgba(3,33,71,0.1)]",
         "transition-all duration-150",
-        isDragging && "opacity-60 shadow-[0_18px_32px_rgba(3,33,71,0.16)]"
+        isDragging && "opacity-60 shadow-[0_18px_32px_rgba(3,33,71,0.16)]",
       )}
       {...attributes}
       {...listeners}
@@ -159,7 +165,6 @@ export const KanbanCard = ({ card, onDelete, onUpdate }: KanbanCardProps) => {
               {card.details}
             </p>
           )}
-          {/* Priority + due date row */}
           {(priority || dueInfo) && (
             <div className="mt-2 flex flex-wrap items-center gap-1.5">
               {priority && (
@@ -168,7 +173,12 @@ export const KanbanCard = ({ card, onDelete, onUpdate }: KanbanCardProps) => {
                 </span>
               )}
               {dueInfo && (
-                <span className={clsx("flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] font-semibold", dueInfo.overdue ? "bg-red-100 text-red-700" : "bg-blue-50 text-blue-600")}>
+                <span
+                  className={clsx(
+                    "flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] font-semibold",
+                    dueInfo.overdue ? "bg-red-100 text-red-700" : "bg-blue-50 text-blue-600",
+                  )}
+                >
                   <svg className="h-2.5 w-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                   </svg>

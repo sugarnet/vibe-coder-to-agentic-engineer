@@ -1,32 +1,29 @@
-"""Shared pytest fixtures for all backend tests."""
-import pytest
 import sqlite3
+import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine, event, Engine
+from sqlalchemy import Engine, create_engine, event
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from main import app, get_db
+from app import crud
 from app.models import Base
-import app.crud as crud
+from main import app, get_db
 
 
-@pytest.fixture(scope="function")
-def test_db():
-    """Create a fresh in-memory database and seed default user."""
+@event.listens_for(Engine, "connect")
+def _enable_sqlite_foreign_keys(dbapi_conn, connection_record):
+    if isinstance(dbapi_conn, sqlite3.Connection):
+        cursor = dbapi_conn.cursor()
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.close()
+
+
+def _build_test_db(seed_user: bool = True):
     engine = create_engine(
         "sqlite:///:memory:",
         connect_args={"check_same_thread": False},
         poolclass=StaticPool,
     )
-
-    @event.listens_for(Engine, "connect")
-    def set_sqlite_pragma(dbapi_conn, connection_record):
-        if isinstance(dbapi_conn, sqlite3.Connection):
-            cursor = dbapi_conn.cursor()
-            cursor.execute("PRAGMA foreign_keys=ON")
-            cursor.close()
-
     Base.metadata.create_all(bind=engine)
     SessionLocal = sessionmaker(bind=engine)
 
@@ -39,31 +36,35 @@ def test_db():
 
     app.dependency_overrides[get_db] = override_get_db
 
-    # Seed default user in test DB
-    db = SessionLocal()
-    try:
-        crud.get_or_create_user(db, "user", "password")
-    finally:
-        db.close()
+    if seed_user:
+        db = SessionLocal()
+        try:
+            crud.get_or_create_user(db, "user", "password")
+        finally:
+            db.close()
 
+    return SessionLocal
+
+
+@pytest.fixture
+def test_db():
+    SessionLocal = _build_test_db(seed_user=True)
     yield SessionLocal
-
     app.dependency_overrides.clear()
 
 
-@pytest.fixture(scope="function")
+@pytest.fixture
 def client(test_db):
     return TestClient(app)
 
 
-@pytest.fixture(scope="function")
+@pytest.fixture
 def auth_token(client):
-    """Log in as default user and return token."""
     response = client.post("/api/login", json={"username": "user", "password": "password"})
     assert response.status_code == 200
     return response.json()["token"]
 
 
-@pytest.fixture(scope="function")
+@pytest.fixture
 def auth_headers(auth_token):
     return {"Authorization": f"Bearer {auth_token}"}

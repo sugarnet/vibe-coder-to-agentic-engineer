@@ -1,10 +1,8 @@
-"""Pydantic schemas for API validation and serialization."""
 from datetime import datetime
-from typing import Optional, List
+from typing import List, Optional
 from pydantic import BaseModel, Field, computed_field
 
 
-# Card schemas
 class CardBase(BaseModel):
     title: str = Field(..., min_length=1, max_length=255)
     details: Optional[str] = None
@@ -36,7 +34,6 @@ class CardResponse(CardBase):
         from_attributes = True
 
 
-# Column schemas
 class ColumnBase(BaseModel):
     title: str = Field(..., min_length=1, max_length=255)
 
@@ -60,7 +57,6 @@ class ColumnResponse(ColumnBase):
         from_attributes = True
 
 
-# Board schemas
 class BoardCreate(BaseModel):
     title: str = Field(..., min_length=1, max_length=255)
 
@@ -76,10 +72,7 @@ class BoardResponse(BaseModel):
     @computed_field
     @property
     def cards(self) -> List[CardResponse]:
-        all_cards: List[CardResponse] = []
-        for column in self.columns:
-            all_cards.extend(column.cards)
-        return all_cards
+        return [card for column in self.columns for card in column.cards]
 
     class Config:
         from_attributes = True
@@ -96,7 +89,6 @@ class BoardSummary(BaseModel):
         from_attributes = True
 
 
-# Board update schema (bulk update for drag-drop)
 class CardUpdateInBoard(BaseModel):
     id: int
     column_id: int
@@ -121,7 +113,6 @@ class BoardUpdateResponse(BaseModel):
     cards_updated: int
 
 
-# User schemas
 class UserCreate(BaseModel):
     username: str = Field(..., min_length=3, max_length=50, pattern=r"^[a-zA-Z0-9_-]+$")
     password: str = Field(..., min_length=6, max_length=100)
@@ -136,7 +127,6 @@ class UserResponse(BaseModel):
         from_attributes = True
 
 
-# Login schemas
 class LoginRequest(BaseModel):
     username: str
     password: str
@@ -154,7 +144,6 @@ class RegisterResponse(BaseModel):
     user_id: int
 
 
-# Chat schemas
 class ChatMessage(BaseModel):
     role: str
     content: str
@@ -173,11 +162,11 @@ class ChatHistoryResponse(BaseModel):
 class ChatRequest(BaseModel):
     message: str = Field(..., min_length=1)
     board_state: Optional[dict] = None
-    board_id: Optional[int] = None  # Which board to use; defaults to first board
+    board_id: Optional[int] = None
 
 
 class BoardUpdateAction(BaseModel):
-    action: str = Field(..., description="Action type: create_card, move_card, delete_card")
+    action: str
     card_id: Optional[int] = None
     column_id: Optional[int] = None
     target_column_id: Optional[int] = None
@@ -186,11 +175,10 @@ class BoardUpdateAction(BaseModel):
 
 
 class ChatResponse(BaseModel):
-    response: str = Field(..., description="AI text response to user")
-    board_updates: Optional[List[BoardUpdateAction]] = Field(None, description="Optional board modifications")
+    response: str
+    board_updates: Optional[List[BoardUpdateAction]] = None
 
 
-# AI test schemas
 class AITestRequest(BaseModel):
     prompt: str = Field(..., min_length=1)
 

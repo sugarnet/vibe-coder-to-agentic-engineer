@@ -1,8 +1,8 @@
 "use client";
 
-import { useAuth } from "@/lib/auth";
-import { LoginForm } from "@/components/LoginForm";
 import { KanbanBoard } from "@/components/KanbanBoard";
+import { LoginForm } from "@/components/LoginForm";
+import { useAuth } from "@/lib/auth";
 
 export default function Home() {
   const { isAuthenticated, isLoading, error, login, register, logout } = useAuth();
@@ -11,7 +11,7 @@ export default function Home() {
     return (
       <div className="flex min-h-screen items-center justify-center bg-[var(--surface)]">
         <div className="text-center">
-          <div className="mb-4 h-12 w-12 animate-spin rounded-full border-4 border-[var(--stroke)] border-t-[var(--primary-blue)]"></div>
+          <div className="mb-4 h-12 w-12 animate-spin rounded-full border-4 border-[var(--stroke)] border-t-[var(--primary-blue)]" />
           <p className="text-[var(--gray-text)]">Loading...</p>
         </div>
       </div>

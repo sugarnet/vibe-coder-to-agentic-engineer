@@ -1,8 +1,7 @@
-"""SQLAlchemy ORM models for Kanban."""
 from datetime import datetime
-from sqlalchemy import ForeignKey, CheckConstraint, Index, String, Text, Integer, DateTime
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from typing import List, Optional
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, Integer, String, Text
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
 class Base(DeclarativeBase):
@@ -19,9 +18,6 @@ class User(Base):
 
     boards: Mapped[List["Board"]] = relationship(back_populates="user", cascade="all, delete-orphan")
 
-    def __repr__(self):
-        return f"<User(id={self.id}, username={self.username})>"
-
 
 class Board(Base):
     __tablename__ = "boards"
@@ -32,16 +28,11 @@ class Board(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    __table_args__ = (
-        Index("idx_boards_user_id", "user_id"),
-    )
+    __table_args__ = (Index("idx_boards_user_id", "user_id"),)
 
     user: Mapped["User"] = relationship(back_populates="boards")
     columns: Mapped[List["Column"]] = relationship(back_populates="board", cascade="all, delete-orphan")
     chat_history: Mapped[List["ChatHistory"]] = relationship(back_populates="board", cascade="all, delete-orphan")
-
-    def __repr__(self):
-        return f"<Board(id={self.id}, user_id={self.user_id}, title={self.title})>"
 
 
 class Column(Base):
@@ -61,9 +52,6 @@ class Column(Base):
     board: Mapped["Board"] = relationship(back_populates="columns")
     cards: Mapped[List["Card"]] = relationship(back_populates="column", cascade="all, delete-orphan")
 
-    def __repr__(self):
-        return f"<Column(id={self.id}, board_id={self.board_id}, title={self.title})>"
-
 
 class Card(Base):
     __tablename__ = "cards"
@@ -72,9 +60,9 @@ class Card(Base):
     column_id: Mapped[int] = mapped_column(ForeignKey("columns.id", ondelete="CASCADE"))
     title: Mapped[str] = mapped_column(String(255))
     details: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    priority: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)  # low, medium, high
-    due_date: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)  # ISO date string YYYY-MM-DD
-    color: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)  # hex color for label
+    priority: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    due_date: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    color: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
     position: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -86,9 +74,6 @@ class Card(Base):
     )
 
     column: Mapped["Column"] = relationship(back_populates="cards")
-
-    def __repr__(self):
-        return f"<Card(id={self.id}, column_id={self.column_id}, title={self.title})>"
 
 
 class ChatHistory(Base):
@@ -107,6 +92,3 @@ class ChatHistory(Base):
     )
 
     board: Mapped["Board"] = relationship(back_populates="chat_history")
-
-    def __repr__(self):
-        return f"<ChatHistory(id={self.id}, board_id={self.board_id}, role={self.role})>"

@@ -1,11 +1,11 @@
-import clsx from "clsx";
-import { useState, useEffect } from "react";
 import { useDroppable } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
-import type { Card, Column } from "@/lib/kanban";
-import type * as api from "@/lib/api";
+import clsx from "clsx";
+import { useEffect, useState } from "react";
 import { KanbanCard } from "@/components/KanbanCard";
 import { NewCardForm } from "@/components/NewCardForm";
+import type * as api from "@/lib/api";
+import type { Card, Column } from "@/lib/kanban";
 
 const ACCENT_COLORS = ["#209dd7", "#ecad0a", "#753991", "#10b981", "#f97316"];
 
@@ -38,9 +38,7 @@ export const KanbanColumn = ({
   const accentColor = ACCENT_COLORS[columnIndex % ACCENT_COLORS.length];
 
   useEffect(() => {
-    if (!isFocused) {
-      setTitleInput(column.title);
-    }
+    if (!isFocused) setTitleInput(column.title);
   }, [column.title, isFocused]);
 
   return (
@@ -48,11 +46,10 @@ export const KanbanColumn = ({
       ref={setNodeRef}
       className={clsx(
         "group flex h-full flex-col rounded-2xl border border-[var(--stroke)] bg-[var(--surface-strong)] shadow-[var(--shadow)] transition",
-        isOver && "ring-2 ring-[var(--accent-yellow)]"
+        isOver && "ring-2 ring-[var(--accent-yellow)]",
       )}
       data-testid={`column-${column.id}`}
     >
-      {/* Column header */}
       <div className="shrink-0 p-4 pb-3">
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
@@ -76,7 +73,7 @@ export const KanbanColumn = ({
         </div>
         <input
           value={titleInput}
-          onChange={(event) => setTitleInput(event.target.value)}
+          onChange={(e) => setTitleInput(e.target.value)}
           onFocus={() => setIsFocused(true)}
           onBlur={() => {
             setIsFocused(false);
@@ -87,7 +84,6 @@ export const KanbanColumn = ({
         />
       </div>
 
-      {/* Cards — scrollable */}
       <div className="flex-1 overflow-y-auto px-4">
         <SortableContext items={column.cardIds} strategy={verticalListSortingStrategy}>
           <div className="flex min-h-full flex-col gap-2 pb-2">
@@ -108,9 +104,12 @@ export const KanbanColumn = ({
         </SortableContext>
       </div>
 
-      {/* New card form */}
       <div className="shrink-0 p-4 pt-2">
-        <NewCardForm onAdd={(title, details, priority, dueDate) => onAddCard(column.id, title, details, priority, dueDate)} />
+        <NewCardForm
+          onAdd={(title, details, priority, dueDate) =>
+            onAddCard(column.id, title, details, priority, dueDate)
+          }
+        />
       </div>
     </section>
   );

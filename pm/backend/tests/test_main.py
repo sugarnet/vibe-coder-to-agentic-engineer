@@ -1,8 +1,10 @@
-"""Tests for FastAPI endpoints."""
-import pytest
-from fastapi.testclient import TestClient
+def _register(client, username: str, password: str = "pass1234") -> str:
+    response = client.post("/api/register", json={"username": username, "password": password})
+    return response.json()["token"]
 
-from main import app
+
+def _headers(token: str) -> dict:
+    return {"Authorization": f"Bearer {token}"}
 
 
 class TestLoginEndpoint:
@@ -13,21 +15,17 @@ class TestLoginEndpoint:
     def test_login_returns_username_token_userid(self, client):
         response = client.post("/api/login", json={"username": "user", "password": "password"})
         data = response.json()
-        assert "username" in data
-        assert "token" in data
-        assert "user_id" in data
         assert data["username"] == "user"
         assert len(data["token"]) > 0
+        assert "user_id" in data
 
     def test_login_token_is_valid(self, client):
-        response1 = client.post("/api/login", json={"username": "user", "password": "password"})
-        response2 = client.post("/api/login", json={"username": "user", "password": "password"})
-        token1 = response1.json()["token"]
-        token2 = response2.json()["token"]
-        assert token1 == token2
-        assert len(token1) > 0
+        r1 = client.post("/api/login", json={"username": "user", "password": "password"})
+        r2 = client.post("/api/login", json={"username": "user", "password": "password"})
+        token = r1.json()["token"]
+        assert token == r2.json()["token"]
 
-        response = client.get("/api/user/board", headers={"Authorization": f"Bearer {token1}"})
+        response = client.get("/api/user/board", headers=_headers(token))
         assert response.status_code == 200
 
     def test_login_with_wrong_password(self, client):
@@ -42,8 +40,7 @@ class TestLoginEndpoint:
         response = client.post("/api/login", json={"username": "user", "password": "password"})
         token = response.json()["token"]
 
-        response = client.get("/api/user/board", headers={"Authorization": f"Bearer {token}"})
-        board = response.json()
+        board = client.get("/api/user/board", headers=_headers(token)).json()
         assert len(board["columns"]) == 5
         assert board["columns"][0]["title"] == "To Do"
 
@@ -71,12 +68,8 @@ class TestRegisterEndpoint:
         assert response.status_code == 422
 
     def test_register_creates_default_board(self, client):
-        response = client.post("/api/register", json={"username": "boarduser", "password": "pass123"})
-        token = response.json()["token"]
-
-        response = client.get("/api/user/board", headers={"Authorization": f"Bearer {token}"})
-        assert response.status_code == 200
-        board = response.json()
+        token = _register(client, "boarduser", "pass123")
+        board = client.get("/api/user/board", headers=_headers(token)).json()
         assert len(board["columns"]) == 5
 
     def test_registered_user_can_login(self, client):
@@ -100,17 +93,13 @@ class TestBoardRoutes:
         assert response.status_code == 200
         board = response.json()
         assert "id" in board
-        assert "columns" in board
-        assert "cards" in board
         assert len(board["columns"]) == 5
         assert isinstance(board["cards"], list)
 
     def test_list_boards(self, client, auth_headers):
         response = client.get("/api/boards", headers=auth_headers)
         assert response.status_code == 200
-        boards = response.json()
-        assert isinstance(boards, list)
-        assert len(boards) >= 1
+        assert len(response.json()) >= 1
 
     def test_create_board(self, client, auth_headers):
         response = client.post("/api/boards", json={"title": "Sprint 1"}, headers=auth_headers)
@@ -120,18 +109,18 @@ class TestBoardRoutes:
         assert len(board["columns"]) == 5
 
     def test_get_specific_board(self, client, auth_headers):
-        create_resp = client.post("/api/boards", json={"title": "My Project"}, headers=auth_headers)
-        board_id = create_resp.json()["id"]
-
+        board_id = client.post("/api/boards", json={"title": "My Project"}, headers=auth_headers).json()["id"]
         response = client.get(f"/api/boards/{board_id}", headers=auth_headers)
         assert response.status_code == 200
         assert response.json()["title"] == "My Project"
 
     def test_rename_board(self, client, auth_headers):
-        create_resp = client.post("/api/boards", json={"title": "Old Name"}, headers=auth_headers)
-        board_id = create_resp.json()["id"]
-
-        response = client.put(f"/api/boards/{board_id}/title", json={"title": "New Name"}, headers=auth_headers)
+        board_id = client.post("/api/boards", json={"title": "Old Name"}, headers=auth_headers).json()["id"]
+        response = client.put(
+            f"/api/boards/{board_id}/title",
+            json={"title": "New Name"},
+            headers=auth_headers,
+        )
         assert response.status_code == 200
         assert response.json()["title"] == "New Name"
 
@@ -140,74 +129,72 @@ class TestBoardRoutes:
         client.post("/api/boards", json={"title": "Keeper"}, headers=auth_headers)
 
         boards = client.get("/api/boards", headers=auth_headers).json()
-        board_to_delete = next(b for b in boards if b["title"] == "To Delete")
-
-        response = client.delete(f"/api/boards/{board_to_delete['id']}", headers=auth_headers)
+        target = next(b for b in boards if b["title"] == "To Delete")
+        response = client.delete(f"/api/boards/{target['id']}", headers=auth_headers)
         assert response.status_code == 200
 
     def test_cannot_delete_last_board(self, client, auth_headers):
         boards = client.get("/api/boards", headers=auth_headers).json()
-        # Delete all but one
         for b in boards[1:]:
             client.delete(f"/api/boards/{b['id']}", headers=auth_headers)
 
-        last_board = client.get("/api/boards", headers=auth_headers).json()[0]
-        response = client.delete(f"/api/boards/{last_board['id']}", headers=auth_headers)
+        last = client.get("/api/boards", headers=auth_headers).json()[0]
+        response = client.delete(f"/api/boards/{last['id']}", headers=auth_headers)
         assert response.status_code == 400
 
     def test_cannot_access_other_users_board(self, client):
-        client.post("/api/register", json={"username": "user_a", "password": "pass123"})
-        resp_b = client.post("/api/register", json={"username": "user_b", "password": "pass123"})
-        token_b = resp_b.json()["token"]
+        token_a = _register(client, "user_a", "pass123")
+        token_b = _register(client, "user_b", "pass123")
 
-        boards_a = client.get("/api/boards", headers={"Authorization": f"Bearer {client.post('/api/login', json={'username': 'user_a', 'password': 'pass123'}).json()['token']}"}).json()
-        board_a_id = boards_a[0]["id"]
-
-        response = client.get(f"/api/boards/{board_a_id}", headers={"Authorization": f"Bearer {token_b}"})
+        boards_a = client.get("/api/boards", headers=_headers(token_a)).json()
+        response = client.get(f"/api/boards/{boards_a[0]['id']}", headers=_headers(token_b))
         assert response.status_code == 403
 
 
 class TestColumnRoutes:
     def test_add_column(self, client, auth_headers):
         board = client.get("/api/user/board", headers=auth_headers).json()
-        board_id = board["id"]
-
-        response = client.post(f"/api/boards/{board_id}/columns", json={"title": "QA"}, headers=auth_headers)
+        response = client.post(
+            f"/api/boards/{board['id']}/columns",
+            json={"title": "QA"},
+            headers=auth_headers,
+        )
         assert response.status_code == 201
         assert response.json()["title"] == "QA"
 
     def test_delete_column(self, client, auth_headers):
         board = client.get("/api/user/board", headers=auth_headers).json()
-        board_id = board["id"]
+        col_id = client.post(
+            f"/api/boards/{board['id']}/columns",
+            json={"title": "Temp"},
+            headers=auth_headers,
+        ).json()["id"]
 
-        # Add a column so we have 6 total, then delete it
-        add_resp = client.post(f"/api/boards/{board_id}/columns", json={"title": "Temp"}, headers=auth_headers)
-        col_id = add_resp.json()["id"]
-
-        response = client.delete(f"/api/boards/{board_id}/columns/{col_id}", headers=auth_headers)
+        response = client.delete(f"/api/boards/{board['id']}/columns/{col_id}", headers=auth_headers)
         assert response.status_code == 200
 
     def test_cannot_delete_last_column(self, client, auth_headers):
-        # Create a board then delete all but one column
-        board_resp = client.post("/api/boards", json={"title": "Minimal"}, headers=auth_headers)
-        board_id = board_resp.json()["id"]
+        board_id = client.post("/api/boards", json={"title": "Minimal"}, headers=auth_headers).json()["id"]
         board = client.get(f"/api/boards/{board_id}", headers=auth_headers).json()
 
-        # Delete all but the first column
         for col in board["columns"][1:]:
             client.delete(f"/api/boards/{board_id}/columns/{col['id']}", headers=auth_headers)
 
-        first_col_id = board["columns"][0]["id"]
-        response = client.delete(f"/api/boards/{board_id}/columns/{first_col_id}", headers=auth_headers)
+        response = client.delete(
+            f"/api/boards/{board_id}/columns/{board['columns'][0]['id']}",
+            headers=auth_headers,
+        )
         assert response.status_code == 400
 
 
 class TestCardRoutes:
     def test_create_card(self, client, auth_headers):
         board = client.get("/api/user/board", headers=auth_headers).json()
-        column_id = board["columns"][0]["id"]
-
-        response = client.post("/api/cards", json={"column_id": column_id, "title": "New Task", "details": "Task details"}, headers=auth_headers)
+        response = client.post(
+            "/api/cards",
+            json={"column_id": board["columns"][0]["id"], "title": "New Task", "details": "Task details"},
+            headers=auth_headers,
+        )
         assert response.status_code == 200
         card = response.json()
         assert card["title"] == "New Task"
@@ -216,14 +203,16 @@ class TestCardRoutes:
 
     def test_create_card_with_priority_and_due_date(self, client, auth_headers):
         board = client.get("/api/user/board", headers=auth_headers).json()
-        column_id = board["columns"][0]["id"]
-
-        response = client.post("/api/cards", json={
-            "column_id": column_id,
-            "title": "Urgent Task",
-            "priority": "high",
-            "due_date": "2026-12-31",
-        }, headers=auth_headers)
+        response = client.post(
+            "/api/cards",
+            json={
+                "column_id": board["columns"][0]["id"],
+                "title": "Urgent Task",
+                "priority": "high",
+                "due_date": "2026-12-31",
+            },
+            headers=auth_headers,
+        )
         assert response.status_code == 200
         card = response.json()
         assert card["priority"] == "high"
@@ -231,8 +220,11 @@ class TestCardRoutes:
 
     def test_create_card_invalid_priority(self, client, auth_headers):
         board = client.get("/api/user/board", headers=auth_headers).json()
-        column_id = board["columns"][0]["id"]
-        response = client.post("/api/cards", json={"column_id": column_id, "title": "T", "priority": "urgent"}, headers=auth_headers)
+        response = client.post(
+            "/api/cards",
+            json={"column_id": board["columns"][0]["id"], "title": "T", "priority": "urgent"},
+            headers=auth_headers,
+        )
         assert response.status_code == 422
 
     def test_create_card_requires_auth(self, client):
@@ -241,12 +233,17 @@ class TestCardRoutes:
 
     def test_update_card(self, client, auth_headers):
         board = client.get("/api/user/board", headers=auth_headers).json()
-        column_id = board["columns"][0]["id"]
+        card_id = client.post(
+            "/api/cards",
+            json={"column_id": board["columns"][0]["id"], "title": "Original"},
+            headers=auth_headers,
+        ).json()["id"]
 
-        create_resp = client.post("/api/cards", json={"column_id": column_id, "title": "Original"}, headers=auth_headers)
-        card_id = create_resp.json()["id"]
-
-        response = client.put(f"/api/cards/{card_id}", json={"title": "Updated", "priority": "low"}, headers=auth_headers)
+        response = client.put(
+            f"/api/cards/{card_id}",
+            json={"title": "Updated", "priority": "low"},
+            headers=auth_headers,
+        )
         assert response.status_code == 200
         updated = response.json()
         assert updated["title"] == "Updated"
@@ -254,10 +251,11 @@ class TestCardRoutes:
 
     def test_delete_card(self, client, auth_headers):
         board = client.get("/api/user/board", headers=auth_headers).json()
-        column_id = board["columns"][0]["id"]
-
-        create_resp = client.post("/api/cards", json={"column_id": column_id, "title": "To Delete"}, headers=auth_headers)
-        card_id = create_resp.json()["id"]
+        card_id = client.post(
+            "/api/cards",
+            json={"column_id": board["columns"][0]["id"], "title": "To Delete"},
+            headers=auth_headers,
+        ).json()["id"]
 
         response = client.delete(f"/api/cards/{card_id}", headers=auth_headers)
         assert response.status_code == 200
@@ -265,40 +263,46 @@ class TestCardRoutes:
 
 
 class TestBoardBulkUpdate:
-    def test_update_board_bulk(self, client, auth_headers):
-        board = client.get("/api/user/board", headers=auth_headers).json()
+    def _make_card(self, client, headers):
+        board = client.get("/api/user/board", headers=headers).json()
         col1_id = board["columns"][0]["id"]
         col2_id = board["columns"][1]["id"]
+        card_id = client.post(
+            "/api/cards",
+            json={"column_id": col1_id, "title": "Card"},
+            headers=headers,
+        ).json()["id"]
+        return board["id"], col1_id, col2_id, card_id
 
-        create_resp = client.post("/api/cards", json={"column_id": col1_id, "title": "Card"}, headers=auth_headers)
-        card_id = create_resp.json()["id"]
-
-        board_id = board["id"]
-        response = client.put(f"/api/boards/{board_id}", json={
-            "columns": [
-                {"id": col1_id, "title": "To Do", "position": 0},
-                {"id": col2_id, "title": "In Progress", "position": 1},
-            ],
-            "cards": [{"id": card_id, "column_id": col2_id, "position": 0}],
-        }, headers=auth_headers)
+    def test_update_board_bulk(self, client, auth_headers):
+        board_id, col1_id, col2_id, card_id = self._make_card(client, auth_headers)
+        response = client.put(
+            f"/api/boards/{board_id}",
+            json={
+                "columns": [
+                    {"id": col1_id, "title": "To Do", "position": 0},
+                    {"id": col2_id, "title": "In Progress", "position": 1},
+                ],
+                "cards": [{"id": card_id, "column_id": col2_id, "position": 0}],
+            },
+            headers=auth_headers,
+        )
         assert response.status_code == 200
         assert response.json()["success"] is True
 
     def test_legacy_board_update(self, client, auth_headers):
-        board = client.get("/api/user/board", headers=auth_headers).json()
-        col1_id = board["columns"][0]["id"]
-        col2_id = board["columns"][1]["id"]
-
-        create_resp = client.post("/api/cards", json={"column_id": col1_id, "title": "Card2"}, headers=auth_headers)
-        card_id = create_resp.json()["id"]
-
-        response = client.put("/api/board", json={
-            "columns": [
-                {"id": col1_id, "title": "To Do", "position": 0},
-                {"id": col2_id, "title": "In Progress", "position": 1},
-            ],
-            "cards": [{"id": card_id, "column_id": col2_id, "position": 0}],
-        }, headers=auth_headers)
+        _, col1_id, col2_id, card_id = self._make_card(client, auth_headers)
+        response = client.put(
+            "/api/board",
+            json={
+                "columns": [
+                    {"id": col1_id, "title": "To Do", "position": 0},
+                    {"id": col2_id, "title": "In Progress", "position": 1},
+                ],
+                "cards": [{"id": card_id, "column_id": col2_id, "position": 0}],
+            },
+            headers=auth_headers,
+        )
         assert response.status_code == 200
         assert response.json()["success"] is True
 
@@ -309,12 +313,10 @@ class TestHealthCheck:
         assert response.status_code == 200
 
     def test_health_check_returns_ok_status(self, client):
-        data = client.get("/api/health").json()
-        assert data["status"] == "ok"
+        assert client.get("/api/health").json()["status"] == "ok"
 
     def test_health_check_has_service_name(self, client):
-        data = client.get("/api/health").json()
-        assert data["service"] == "kanban-api"
+        assert client.get("/api/health").json()["service"] == "kanban-api"
 
 
 class TestEchoEndpoint:
@@ -323,9 +325,8 @@ class TestEchoEndpoint:
         assert response.status_code == 200
 
     def test_echo_reflects_input_correctly(self, client):
-        test_data = {"message": "hello", "count": 42}
-        data = client.post("/api/echo", json=test_data).json()
-        assert data["echo"] == test_data
+        payload = {"message": "hello", "count": 42}
+        assert client.post("/api/echo", json=payload).json()["echo"] == payload
 
     def test_echo_returns_400_for_empty_body(self, client):
         response = client.post("/api/echo", json={})
@@ -339,107 +340,97 @@ class TestNotFoundRoutes:
 
 
 class TestUserIsolation:
-    def _register_and_token(self, client, username):
-        resp = client.post("/api/register", json={"username": username, "password": "pass1234"})
-        return resp.json()["token"]
+    def _setup_two_users(self, client, suffix: str):
+        token_a = _register(client, f"iso_{suffix}_a")
+        token_b = _register(client, f"iso_{suffix}_b")
+        return _headers(token_a), _headers(token_b)
 
     def test_user_cannot_update_another_users_card(self, client):
-        token_a = self._register_and_token(client, "iso_user_a")
-        token_b = self._register_and_token(client, "iso_user_b")
-        headers_a = {"Authorization": f"Bearer {token_a}"}
-        headers_b = {"Authorization": f"Bearer {token_b}"}
-
+        headers_a, headers_b = self._setup_two_users(client, "upd")
         board = client.get("/api/user/board", headers=headers_a).json()
-        col_id = board["columns"][0]["id"]
-        card = client.post("/api/cards", json={"column_id": col_id, "title": "A card"}, headers=headers_a).json()
+        card = client.post(
+            "/api/cards",
+            json={"column_id": board["columns"][0]["id"], "title": "A card"},
+            headers=headers_a,
+        ).json()
 
         response = client.put(f"/api/cards/{card['id']}", json={"title": "Stolen"}, headers=headers_b)
         assert response.status_code == 403
 
     def test_user_cannot_delete_another_users_card(self, client):
-        token_a = self._register_and_token(client, "iso_del_a")
-        token_b = self._register_and_token(client, "iso_del_b")
-        headers_a = {"Authorization": f"Bearer {token_a}"}
-        headers_b = {"Authorization": f"Bearer {token_b}"}
-
+        headers_a, headers_b = self._setup_two_users(client, "del")
         board = client.get("/api/user/board", headers=headers_a).json()
-        col_id = board["columns"][0]["id"]
-        card = client.post("/api/cards", json={"column_id": col_id, "title": "A card"}, headers=headers_a).json()
+        card = client.post(
+            "/api/cards",
+            json={"column_id": board["columns"][0]["id"], "title": "A card"},
+            headers=headers_a,
+        ).json()
 
         response = client.delete(f"/api/cards/{card['id']}", headers=headers_b)
         assert response.status_code == 403
 
     def test_user_cannot_add_column_to_another_users_board(self, client):
-        token_a = self._register_and_token(client, "iso_col_a")
-        token_b = self._register_and_token(client, "iso_col_b")
-        headers_a = {"Authorization": f"Bearer {token_a}"}
-        headers_b = {"Authorization": f"Bearer {token_b}"}
-
+        headers_a, headers_b = self._setup_two_users(client, "col")
         board = client.get("/api/user/board", headers=headers_a).json()
-        board_id = board["id"]
 
-        response = client.post(f"/api/boards/{board_id}/columns", json={"title": "Stolen"}, headers=headers_b)
+        response = client.post(
+            f"/api/boards/{board['id']}/columns",
+            json={"title": "Stolen"},
+            headers=headers_b,
+        )
         assert response.status_code == 403
 
     def test_board_data_is_scoped_to_user(self, client):
-        token_a = self._register_and_token(client, "scope_a")
-        token_b = self._register_and_token(client, "scope_b")
-        headers_a = {"Authorization": f"Bearer {token_a}"}
-        headers_b = {"Authorization": f"Bearer {token_b}"}
+        headers_a, headers_b = self._setup_two_users(client, "scope")
 
         board_a = client.get("/api/user/board", headers=headers_a).json()
-        col_id = board_a["columns"][0]["id"]
-        client.post("/api/cards", json={"column_id": col_id, "title": "Secret card"}, headers=headers_a)
+        client.post(
+            "/api/cards",
+            json={"column_id": board_a["columns"][0]["id"], "title": "Secret card"},
+            headers=headers_a,
+        )
 
         board_b = client.get("/api/user/board", headers=headers_b).json()
-        titles = [c["title"] for c in board_b["cards"]]
-        assert "Secret card" not in titles
+        assert "Secret card" not in [c["title"] for c in board_b["cards"]]
 
 
 class TestCardFieldEdgeCases:
-    def test_update_card_clears_priority(self, client, auth_headers):
-        board = client.get("/api/user/board", headers=auth_headers).json()
-        col_id = board["columns"][0]["id"]
+    def _make_card(self, client, headers, **extra):
+        board = client.get("/api/user/board", headers=headers).json()
+        return client.post(
+            "/api/cards",
+            json={"column_id": board["columns"][0]["id"], "title": "T", **extra},
+            headers=headers,
+        ).json()
 
-        card = client.post("/api/cards", json={"column_id": col_id, "title": "T", "priority": "high"}, headers=auth_headers).json()
+    def test_update_card_clears_priority(self, client, auth_headers):
+        card = self._make_card(client, auth_headers, priority="high")
         assert card["priority"] == "high"
 
         updated = client.put(f"/api/cards/{card['id']}", json={"priority": None}, headers=auth_headers).json()
         assert updated["priority"] is None
 
     def test_update_card_clears_due_date(self, client, auth_headers):
-        board = client.get("/api/user/board", headers=auth_headers).json()
-        col_id = board["columns"][0]["id"]
-
-        card = client.post("/api/cards", json={"column_id": col_id, "title": "T", "due_date": "2026-12-31"}, headers=auth_headers).json()
+        card = self._make_card(client, auth_headers, due_date="2026-12-31")
         assert card["due_date"] == "2026-12-31"
 
         updated = client.put(f"/api/cards/{card['id']}", json={"due_date": None}, headers=auth_headers).json()
         assert updated["due_date"] is None
 
     def test_card_color_field(self, client, auth_headers):
-        board = client.get("/api/user/board", headers=auth_headers).json()
-        col_id = board["columns"][0]["id"]
-
-        card = client.post("/api/cards", json={"column_id": col_id, "title": "T", "color": "#ff0000"}, headers=auth_headers).json()
+        card = self._make_card(client, auth_headers, color="#ff0000")
         assert card["color"] == "#ff0000"
 
         updated = client.put(f"/api/cards/{card['id']}", json={"color": None}, headers=auth_headers).json()
         assert updated["color"] is None
 
     def test_column_positions_reorder_after_delete(self, client, auth_headers):
-        board_resp = client.post("/api/boards", json={"title": "Pos Test"}, headers=auth_headers)
-        board_id = board_resp.json()["id"]
-        board = client.get(f"/api/boards/{board_id}", headers=auth_headers).json()
-
-        # Add an extra column (now 6 total)
+        board_id = client.post("/api/boards", json={"title": "Pos Test"}, headers=auth_headers).json()["id"]
         client.post(f"/api/boards/{board_id}/columns", json={"title": "Extra"}, headers=auth_headers)
         board = client.get(f"/api/boards/{board_id}", headers=auth_headers).json()
         assert len(board["columns"]) == 6
 
-        # Delete the second column
-        second_col_id = board["columns"][1]["id"]
-        client.delete(f"/api/boards/{board_id}/columns/{second_col_id}", headers=auth_headers)
+        client.delete(f"/api/boards/{board_id}/columns/{board['columns'][1]['id']}", headers=auth_headers)
 
         board = client.get(f"/api/boards/{board_id}", headers=auth_headers).json()
         assert len(board["columns"]) == 5

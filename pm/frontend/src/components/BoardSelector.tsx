@@ -55,15 +55,20 @@ export const BoardSelector = ({ currentBoardId, currentBoardTitle, onSelectBoard
     e.stopPropagation();
     try {
       await api.deleteBoard(boardId);
-      const updated = boards.filter((b) => b.id !== boardId);
-      setBoards(updated);
-      if (boardId === currentBoardId && updated.length > 0) {
-        onSelectBoard(updated[0].id);
+      const remaining = boards.filter((b) => b.id !== boardId);
+      setBoards(remaining);
+      if (boardId === currentBoardId && remaining.length > 0) {
+        onSelectBoard(remaining[0].id);
         setOpen(false);
       }
     } catch {
       // ignore - probably last board
     }
+  };
+
+  const handleSelect = (boardId: number) => {
+    onSelectBoard(boardId);
+    setOpen(false);
   };
 
   return (
@@ -85,30 +90,33 @@ export const BoardSelector = ({ currentBoardId, currentBoardTitle, onSelectBoard
       {open && (
         <div className="absolute left-0 top-full z-50 mt-1 w-56 rounded-xl border border-[var(--stroke)] bg-white shadow-lg">
           <div className="max-h-48 overflow-y-auto py-1">
-            {boards.map((board) => (
-              <div
-                key={board.id}
-                onClick={() => { onSelectBoard(board.id); setOpen(false); }}
-                className={`group flex cursor-pointer items-center justify-between px-3 py-2 text-sm transition hover:bg-blue-50 ${board.id === currentBoardId ? "font-semibold text-[var(--primary-blue)]" : "text-[var(--navy-dark)]"}`}
-              >
-                <span className="truncate">{board.title}</span>
-                {board.id === currentBoardId ? (
-                  <svg className="h-3.5 w-3.5 shrink-0 text-[var(--primary-blue)]" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                  </svg>
-                ) : (
-                  <button
-                    onClick={(e) => handleDelete(e, board.id)}
-                    className="invisible shrink-0 rounded p-0.5 text-red-400 hover:bg-red-50 hover:text-red-600 group-hover:visible"
-                    title="Delete board"
-                  >
-                    <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+            {boards.map((board) => {
+              const isCurrent = board.id === currentBoardId;
+              return (
+                <div
+                  key={board.id}
+                  onClick={() => handleSelect(board.id)}
+                  className={`group flex cursor-pointer items-center justify-between px-3 py-2 text-sm transition hover:bg-blue-50 ${isCurrent ? "font-semibold text-[var(--primary-blue)]" : "text-[var(--navy-dark)]"}`}
+                >
+                  <span className="truncate">{board.title}</span>
+                  {isCurrent ? (
+                    <svg className="h-3.5 w-3.5 shrink-0 text-[var(--primary-blue)]" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
                     </svg>
-                  </button>
-                )}
-              </div>
-            ))}
+                  ) : (
+                    <button
+                      onClick={(e) => handleDelete(e, board.id)}
+                      className="invisible shrink-0 rounded p-0.5 text-red-400 hover:bg-red-50 hover:text-red-600 group-hover:visible"
+                      title="Delete board"
+                    >
+                      <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      </svg>
+                    </button>
+                  )}
+                </div>
+              );
+            })}
           </div>
 
           <div className="border-t border-[var(--stroke)] p-2">
@@ -119,7 +127,10 @@ export const BoardSelector = ({ currentBoardId, currentBoardTitle, onSelectBoard
                   type="text"
                   value={newTitle}
                   onChange={(e) => setNewTitle(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === "Enter") handleCreate(); if (e.key === "Escape") setShowInput(false); }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") handleCreate();
+                    if (e.key === "Escape") setShowInput(false);
+                  }}
                   placeholder="Board name"
                   className="min-w-0 flex-1 rounded border border-[var(--stroke)] px-2 py-1 text-xs outline-none focus:border-[var(--primary-blue)]"
                 />
