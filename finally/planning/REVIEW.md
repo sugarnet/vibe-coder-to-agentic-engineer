@@ -1,202 +1,121 @@
-# FinAlly — Code Review
+# Revision de planning/PLAN.md
 
-**Date:** 2026-06-05
-**Reviewer:** Claude Sonnet 4.6
-**Scope:** Full codebase on branch `main` as of commit `02f6b0c`
-**What exists:** `backend/app/market/` (8 modules), `backend/tests/market/` (6 test files), planning docs. Frontend, Docker, scripts, database layer, portfolio API, chat/LLM integration — all absent.
+## Resumen
 
----
+El plan es suficientemente completo para orientar una implementacion full-stack y acierta en decisiones pragmaticas: un solo contenedor, un solo puerto, SQLite, SSE y simulador de mercado por defecto. La mayor debilidad no esta en la vision sino en los contratos entre agentes: varias formas de datos, politicas de error y detalles operativos quedan descritos en prosa, lo que aumenta el riesgo de que frontend, backend, testing y LLM implementen piezas incompatibles.
 
-## 1. Security
+## Feedback Principal
 
-### CRITICAL — Live API keys committed inside `.env`
+### 1. Faltan contratos exactos de API y SSE
 
-`/.env` contains two live credentials:
+La seccion de endpoints enumera rutas, pero no define los schemas completos de request/response, codigos de error ni ejemplos canonicos. Esto es especialmente importante para:
 
-```
-OPENROUTER_API_KEY=<redacted>
-MASSIVE_API_KEY=<redacted>
-```
+- `GET /api/portfolio`
+- `POST /api/portfolio/trade`
+- `GET /api/watchlist`
+- `POST /api/chat`
+- `GET /api/stream/prices`
 
-The file is correctly listed in `.gitignore` and is not currently tracked. However, it exists on disk in plaintext. The repository has no `.env.example` as the plan requires. The risk here is accidental `git add .` in a future commit, or the file being read by any process with filesystem access to this directory.
+Recomendacion: agregar una subseccion "Contratos de API" con JSON de ejemplo para cada endpoint. Para SSE, definir si cada evento contiene un solo ticker o un batch, el nombre del evento si se usa `event:`, y el payload exacto. Por ejemplo:
 
-**Action required:**
-- Rotate both keys immediately.
-- Add `.env.example` with placeholder values (plan section 5 requires this).
-- Confirm `.env` is never staged: `git status` must always show it as untracked.
-
----
-
-## 2. Correctness Bugs
-
-### HIGH — Module-level router created once; `create_stream_router` registers a route on it on every call
-
-`backend/app/market/stream.py` lines 17 and 20–28:
-
-```python
-router = APIRouter(prefix="/api/stream", tags=["streaming"])
-
-def create_stream_router(price_cache: PriceCache) -> APIRouter:
-    @router.get("/prices")
-    async def stream_prices(request: Request) -> StreamingResponse:
-        ...
-    return router
+```json
+{
+  "ticker": "AAPL",
+  "price": 190.42,
+  "previous_price": 190.11,
+  "change": 0.31,
+  "change_percent": 0.16,
+  "direction": "up",
+  "timestamp": "2026-06-11T12:00:00Z"
+}
 ```
 
-`router` is a module-level singleton. Every call to `create_stream_router()` registers a new `GET /prices` route on the same router object. In production this is called once, so there is no visible bug. In tests, any test that imports and calls `create_stream_router()` twice (e.g., across test modules) will double-register the route, causing routing ambiguity. FastAPI will silently use the first registered handler.
+Sin esto, el frontend puede esperar arrays mientras el backend emite eventos individuales, o puede calcular campos que el backend ya intenta proveer.
 
-**Fix:** Move `router = APIRouter(...)` inside `create_stream_router()` so each call produces a fresh router.
+### 2. La integracion LLM necesita una politica de seguridad y fallos mas explicita
 
-### MEDIUM — `PriceCache.version` property read outside lock
+La auto-ejecucion sin confirmacion es coherente para una demo con dinero ficticio, pero el plan deberia especificar limites duros para evitar comportamientos sorprendentes:
 
-`backend/app/market/cache.py` lines 64–66:
+- cantidad maxima por operacion o por respuesta del LLM
+- numero maximo de operaciones en una respuesta
+- tickers permitidos o normalizacion de simbolos
+- politica cuando el JSON estructurado es invalido
+- politica cuando una accion falla despues de que otras acciones ya se ejecutaron
 
-```python
-@property
-def version(self) -> int:
-    return self._version
+Recomendacion: tratar las acciones del LLM como una lista validada por el backend, no como instrucciones confiables. El plan ya lo sugiere, pero conviene convertirlo en contrato: "parsear, validar todo lo posible, ejecutar solo acciones validas, devolver resultados por accion".
+
+### 3. Hay ambiguedad entre estado persistido y estado calculado
+
+El plan mezcla estado mutable (`cash_balance`, `positions`, `portfolio_snapshots`) con datos derivables desde `trades` y precios actuales. Esto no es necesariamente incorrecto, pero falta definir la fuente de verdad.
+
+Preguntas que deberian resolverse antes de implementar:
+
+- El efectivo se calcula desde `trades` o se persiste en `users_profile.cash_balance`?
+- Si una operacion se registra en `trades` pero falla actualizar `positions`, como se recupera consistencia?
+- `portfolio_snapshots.total_value` usa precios del cache en memoria o precios guardados en algun lado?
+- Que pasa con snapshots historicos cuando el simulador genera precios distintos despues de reiniciar?
+
+Recomendacion: declarar explicitamente que `users_profile.cash_balance` y `positions` son la fuente de verdad operacional, mientras `trades` es log de auditoria. Luego exigir que trade execution ocurra en una transaccion SQLite.
+
+### 4. El modelo de datos necesita restricciones y reglas de normalizacion
+
+El esquema es claro, pero faltan restricciones que evitarian errores silenciosos:
+
+- `ticker` deberia guardarse uppercase y sin espacios.
+- `quantity` debe ser positiva en trades.
+- `side` deberia tener `CHECK (side in ('buy', 'sell'))`.
+- `cash_balance` no deberia quedar negativo.
+- `positions.quantity` no deberia quedar negativa.
+- vender toda una posicion deberia eliminar la fila o dejar `quantity=0`, pero debe elegirse una sola regla.
+
+Recomendacion: agregar estas reglas al plan para que backend, tests y UI coincidan. Mi preferencia seria eliminar posiciones con cantidad cero y mantener el historial solo en `trades`.
+
+### 5. El simulador de mercado necesita definir el universo dinamico
+
+El plan dice que hay 10 tickers semilla y que el usuario puede agregar tickers. No queda cerrado si el simulador acepta cualquier ticker nuevo, si usa precios semilla genericos, o si rechaza simbolos desconocidos.
+
+Recomendacion: definir una politica simple:
+
+- aceptar tickers que matcheen `^[A-Z.]{1,8}$`
+- si el ticker no tiene semilla, inicializarlo con un precio pseudoaleatorio determinista basado en el simbolo
+- desde ese momento incluirlo en el cache y en SSE
+
+Esto mantiene la demo flexible sin requerir una base externa de simbolos.
+
+### 6. Docker y entorno tienen un riesgo de secretos
+
+La seccion de Docker menciona que el backend lee `.env` desde la raiz del proyecto, pero no debe copiarse `.env` dentro de la imagen. El plan deberia decir explicitamente que `.env` se pasa solo en runtime con `--env-file` o variables de entorno del host.
+
+Recomendacion: agregar `.env.example` como archivo requerido en la estructura y aclarar:
+
+- `.env` esta en `.gitignore`
+- Dockerfile no copia `.env`
+- scripts usan `--env-file .env` si existe
+- `OPENROUTER_API_KEY` puede faltar cuando `LLM_MOCK=true`
+
+### 7. El plan de testing es bueno, pero necesita entrypoints concretos
+
+La estrategia de testing cubre los escenarios correctos, pero no define comandos canonicos. Esto importa porque los agentes pueden crear infraestructuras distintas y no conectadas.
+
+Recomendacion: agregar una tabla de comandos esperados:
+
+```bash
+cd backend && uv run pytest
+cd frontend && npm test
+cd frontend && npm run build
+docker compose -f test/docker-compose.test.yml up --build --abort-on-container-exit
 ```
 
-All other read/write operations on `_prices` and `_version` in this class acquire `self._lock`. `version` does not. On CPython with the GIL, reading a Python `int` is atomic, but the design intent of the class is to always hold the lock when accessing shared state. This is inconsistent and becomes a data race on any GIL-free Python build (Python 3.13t / PEP 703). The SSE generator polls `cache.version` in a tight loop every 500ms, making this the hottest read path in the application.
+Tambien conviene definir fixtures canonicos para `LLM_MOCK=true`, especialmente una respuesta que ejecuta una compra y otra que modifica la watchlist.
 
-**Fix:** Acquire `self._lock` in the `version` property.
+## Oportunidades de Ajuste
 
-### LOW — `SimulatorDataSource.get_tickers()` returns state from an unstarted source without error
+1. Agregar `DB_PATH` y `LLM_MODEL` como variables opcionales. Reducen hardcoding y facilitan tests.
+2. Definir un limite de historial de chat, por ejemplo ultimos 20 mensajes.
+3. Especificar que todo endpoint de escritura devuelve el estado actualizado que el frontend necesita renderizar, para evitar refetch ambiguo.
+4. Decidir si `portfolio_snapshots` se escribe cada 30 segundos o solo en eventos significativos. Si se mantiene el timer, aclarar lifecycle y cierre limpio de la tarea de fondo.
+5. Mover la seccion 13 del propio `PLAN.md` a este archivo o convertirla en issues resueltos. Tener preguntas abiertas dentro del plan puede confundir a agentes que lo usan como contrato.
 
-`backend/app/market/simulator.py` lines 257–258:
+## Recomendacion Final
 
-```python
-def get_tickers(self) -> list[str]:
-    return self._sim.get_tickers() if self._sim else []
-```
-
-Calling `get_tickers()` before `start()` silently returns `[]`. The `MarketDataSource` interface documents that `start()` must be called before other methods, but there is no guard or assertion. A caller who forgets `await source.start(tickers)` gets empty results with no diagnostic. Not a runtime crash, but a silent failure mode that would be hard to debug. The same pattern applies to `add_ticker()` and `remove_ticker()` (both guard on `if self._sim`).
-
----
-
-## 3. Architecture and Plan Adherence
-
-### MAJOR GAP — Only the market data subsystem exists
-
-The plan defines 8 API endpoint groups and a complete full-stack application. As of this commit, only `backend/app/market/` is implemented. The following components required by the plan are entirely absent:
-
-| Plan Section | Component | Status |
-|---|---|---|
-| Section 7 | SQLite database + schema + seed data | Missing |
-| Section 8 | Portfolio API (`/api/portfolio`, `/api/portfolio/trade`, `/api/portfolio/history`) | Missing |
-| Section 8 | Watchlist API (`/api/watchlist`) | Missing |
-| Section 8 | Chat API (`/api/chat`) | Missing |
-| Section 8 | Health check (`/api/health`) | Missing |
-| Section 9 | LLM integration (LiteLLM → OpenRouter/Cerebras) | Missing |
-| Section 10 | Next.js frontend (all of it) | Missing |
-| Section 11 | Dockerfile multi-stage build | Missing |
-| Section 11 | `scripts/start_mac.sh`, `stop_mac.sh`, PowerShell equivalents | Missing |
-| Section 12 | E2E tests with Playwright | Missing |
-| Section 5 | `.env.example` | Missing |
-| Root | `db/` directory with `.gitkeep` | Missing |
-| Root | `docker-compose.yml` | Missing |
-| Root | `test/docker-compose.test.yml` | Missing |
-
-This is not a critique of work quality — the market data module that does exist is well-built. It is a statement of overall project completion: the codebase is approximately 15% of what the plan describes.
-
-### MEDIUM — No FastAPI application entry point
-
-There is no `main.py` or `app.py` at the backend root that wires up FastAPI, mounts the stream router, and starts the background data source task. The `create_stream_router()` and `create_market_data_source()` factories exist, but nothing calls them. There is also no lifecycle handler (startup/shutdown) to call `await source.start(tickers)` and `await source.stop()`.
-
-When an agent implements the main FastAPI app, the startup sequence must:
-1. Create `PriceCache`
-2. Call `create_market_data_source(cache)` → `await source.start(default_tickers)`
-3. Mount `create_stream_router(cache)` — calling it only once (see bug in section 2)
-4. Register a shutdown handler: `await source.stop()`
-
-### LOW — Plan inconsistency: model ID for LLM
-
-Plan section 9 specifies `openrouter/openai/gpt-oss-120b` but also says "the skill must be considered canonical." The cerebras skill in `.claude/skills/cerebras/SKILL.md` defines a different model ID. Any agent implementing the LLM integration will see a conflict. The canonical model ID from the skill should be recorded explicitly in the plan to prevent divergence.
-
----
-
-## 4. Code Quality
-
-### The market data module is well-written
-
-Positive observations, recorded so downstream agents know what patterns to follow:
-
-- `PriceUpdate` is a frozen dataclass with `slots=True` — correct and efficient for an object created thousands of times per minute.
-- `GBMSimulator.step()` uses numpy vectorized normal draws and Cholesky correlation — mathematically correct and performant.
-- Both `_run_loop` (simulator) and `_poll_loop`/`_poll_once` (Massive) catch all exceptions and continue — essential for long-running background tasks.
-- `SimulatorDataSource.stop()` properly cancels the asyncio task and awaits `CancelledError` — the correct asyncio cancellation pattern.
-- The factory reads from the environment at call time, not at module import time — testable without environment mutation at import.
-- `PriceCache.get_all()` returns a shallow copy — prevents callers from mutating internal state.
-
-### TRIVIAL — `_add_ticker_internal` has a redundant guard
-
-`backend/app/market/simulator.py` lines 147–151:
-
-```python
-def _add_ticker_internal(self, ticker: str) -> None:
-    if ticker in self._prices:
-        return
-    ...
-```
-
-`add_ticker()` (the public method, line 121) already checks `if ticker in self._prices: return` before calling `_add_ticker_internal`. The guard inside `_add_ticker_internal` is redundant for the call from `add_ticker`, but it is needed for correctness when called directly from `__init__`. The duplication is harmless but slightly confusing. Leave it as-is or add a comment explaining why both guards exist.
-
----
-
-## 5. Test Suite
-
-### Coverage gaps relative to plan requirements
-
-The plan (section 12) specifies tests for:
-- Portfolio execution logic, P&L calculations, edge cases — no tests exist (no code exists yet)
-- LLM structured output parsing — no tests exist (no code exists yet)
-- API route status codes and response shapes — no tests exist (no routes exist yet)
-- Frontend component tests — no tests exist (no frontend exists yet)
-
-For the market data module specifically (the only implemented component), coverage is 84% overall with two gaps:
-
-1. `stream.py` at 31%: No test exercises the SSE `_generate_events` generator. The plan calls the SSE stream the primary real-time data path. At minimum, a test using `httpx.AsyncClient` with an ASGI app should verify: (a) the `retry:` header is sent, (b) a price update produces a `data:` event, (c) the generator exits cleanly when the client disconnects.
-
-2. `massive_client.py` at 56%: Five tests in `test_massive.py` rely on the `massive` package being installed. The MARKET_DATA_REVIEW.md documents that these tests fail in environments without `massive`. Since `massive` is a declared dependency in `pyproject.toml`, they should pass after `uv sync`, but CI environments or fresh clones that only install dev dependencies may fail. The fix is to either ensure `massive` is always installed in test environments, or add `create=True` to the `patch("app.market.massive_client.RESTClient")` calls in the two affected tests.
-
-### No SSE integration test
-
-There is no test for the full SSE pipeline: `SimulatorDataSource` → `PriceCache` → `_generate_events`. This is the critical path for the frontend. A test should:
-- Create a minimal FastAPI app, mount the stream router
-- Use `httpx.AsyncClient` in SSE mode
-- Start the simulator, assert at least one `data:` event arrives within 2 seconds
-
----
-
-## 6. Dependency and Build Configuration
-
-### pyproject.toml: missing dependencies for the full app
-
-`backend/pyproject.toml` currently declares dependencies for the market data module only. When the remaining components are implemented, the following will be needed and should be added then:
-
-- `python-dotenv` or equivalent — to load `.env` (the plan says the backend reads `.env` from the project root)
-- `litellm` — for LLM integration (plan section 9)
-- `aiosqlite` or `aiofiles` — for async SQLite access (or synchronous `sqlite3` is acceptable given the single-user constraint)
-
-The plan does not specify a `.env` loading mechanism. Given the Docker deployment model (`--env-file .env`), environment variables will be injected by Docker and `python-dotenv` may not be needed in production. However, for local development outside Docker, explicit loading will be necessary. This should be clarified before the database and LLM agents begin work.
-
-### `rich` is a production dependency
-
-`backend/pyproject.toml` lists `rich>=13.0.0` in `[project.dependencies]` (not in `[project.optional-dependencies]`). `rich` is only used in `market_data_demo.py`, a demo script that is not part of the production app. It should move to `[project.optional-dependencies]` under a `demo` extra, or `market_data_demo.py` should be relocated outside the installable package.
-
----
-
-## 7. Summary Table
-
-| ID | Severity | Area | Finding |
-|---|---|---|---|
-| S1 | CRITICAL | Security | Live API keys in `.env` on disk; `.env.example` missing |
-| B1 | HIGH | Correctness | Module-level SSE router — double-registration risk in tests |
-| B2 | MEDIUM | Correctness | `PriceCache.version` read without lock |
-| B3 | LOW | Correctness | `get_tickers()` / `add_ticker()` / `remove_ticker()` silently no-op before `start()` |
-| A1 | MAJOR | Architecture | 85% of planned components not yet implemented |
-| A2 | MEDIUM | Architecture | No FastAPI app entry point; no startup/shutdown lifecycle |
-| A3 | LOW | Architecture | LLM model ID inconsistency between plan section 9 and cerebras skill |
-| Q1 | TRIVIAL | Quality | `rich` in production dependencies; belongs in optional or dev |
-| T1 | MEDIUM | Testing | No SSE integration test for the primary data path |
-| T2 | LOW | Testing | 5 Massive tests may fail without `massive` package installed |
+Antes de dividir el trabajo entre agentes, cerraria primero tres contratos: API JSON, SSE payload y ejecucion de trades en transaccion. Con eso, el plan queda en buen estado para implementacion paralela. Sin esos contratos, el riesgo principal es integracion tardia: piezas individualmente correctas que no encajan entre si.
