@@ -1,56 +1,17 @@
 # FinAlly — AI Trading Workstation
 
-A visually rich, data-dense trading terminal powered by AI. Stream live market prices, trade a simulated portfolio, and let an AI assistant analyze positions and execute trades on your behalf.
+An AI-powered trading terminal that streams live market data, lets you trade a simulated portfolio, and includes an LLM assistant that can analyze positions and execute trades on your behalf.
 
-Built entirely by AI coding agents as the final project of an agentic programming course.
-
----
+Built as the capstone project of an agentic programming course — constructed entirely by AI coding agents.
 
 ## What It Does
 
-- **Live price stream** — 10 default tickers updating every ~500ms via SSE, with green/red flash animations
-- **Sparkline charts** — mini price charts per ticker accumulated from the live stream
-- **Trade execution** — buy/sell at market price instantly; no commissions, no confirmation dialogs
+- **Live price streaming** — prices update every ~500ms via SSE, flashing green/red on change
+- **Simulated portfolio** — start with $10,000 virtual cash, buy/sell with instant market orders
+- **Sparkline charts** — mini price charts per ticker, built progressively from the live stream
 - **Portfolio heatmap** — treemap of positions sized by weight, colored by P&L
-- **P&L chart** — total portfolio value over time
-- **AI chat assistant** — ask about your portfolio, get analysis, and let the AI execute trades via natural language
-
----
-
-## Quick Start
-
-```bash
-# Copy and configure environment variables
-cp .env.example .env
-# Add your OPENROUTER_API_KEY to .env
-
-# Build and run (macOS/Linux)
-./scripts/start_mac.sh
-
-# Open http://localhost:8000
-```
-
-Windows:
-```powershell
-.\scripts\start_windows.ps1
-```
-
-To stop:
-```bash
-./scripts/stop_mac.sh
-```
-
----
-
-## Environment Variables
-
-| Variable | Required | Description |
-|---|---|---|
-| `OPENROUTER_API_KEY` | Yes | OpenRouter API key for AI chat |
-| `MASSIVE_API_KEY` | No | Polygon.io key for real market data (uses simulator if unset) |
-| `LLM_MOCK` | No | Set `true` for deterministic mock LLM responses (for testing) |
-
----
+- **AI chat assistant** — ask about your portfolio, get analysis, have the AI execute trades
+- **Watchlist management** — add/remove tickers manually or via natural language
 
 ## Architecture
 
@@ -58,75 +19,90 @@ Single Docker container, single port (8000):
 
 ```
 FastAPI (Python/uv)
-├── /api/*           REST endpoints (portfolio, watchlist, chat)
-├── /api/stream/*    SSE price streaming
-└── /*               Next.js static export (frontend)
+├── /api/*          REST endpoints
+├── /api/stream/*   SSE price streaming
+└── /*              Next.js static frontend
 
-SQLite (volume-mounted at /app/db/finally.db)
-Background task: market data simulator or Massive API poller
+SQLite (volume-mounted)
+Background task: market data (simulator or Polygon.io)
 ```
 
-**Market data** defaults to a built-in GBM (Geometric Brownian Motion) simulator with correlated sector moves and random shock events. Switch to real Polygon.io data by setting `MASSIVE_API_KEY`.
+## Quick Start
 
-**AI chat** uses LiteLLM → OpenRouter (Cerebras inference) with structured JSON output. The LLM can execute trades and manage your watchlist automatically.
+```bash
+# Copy and configure environment
+cp .env.example .env
+# Edit .env — set OPENROUTER_API_KEY at minimum
 
----
+# Start
+./scripts/start_mac.sh
+
+# Open http://localhost:8000
+```
+
+```bash
+# Stop
+./scripts/stop_mac.sh
+```
+
+Windows users: use `scripts/start_windows.ps1` / `scripts/stop_windows.ps1`.
+
+## Environment Variables
+
+| Variable | Required | Description |
+|---|---|---|
+| `OPENROUTER_API_KEY` | Yes | OpenRouter API key for the AI chat assistant |
+| `MASSIVE_API_KEY` | No | Polygon.io key for real market data (uses simulator if unset) |
+| `LLM_MOCK` | No | Set `true` for deterministic mock LLM responses (testing) |
+
+## Market Data
+
+By default the app runs a built-in **simulator** using Geometric Brownian Motion — no API key needed. It starts from realistic seed prices, includes correlated sector moves, and fires occasional shock events for visual drama.
+
+Set `MASSIVE_API_KEY` to switch to live Polygon.io data (REST polling, free tier: every 15s).
 
 ## Development
 
-### Backend (Python/FastAPI/uv)
+**Backend** (Python 3.12, uv):
 
 ```bash
 cd backend
 uv sync
-uv run uvicorn app.main:app --reload --port 8000
+uv run uvicorn app.main:app --reload
 ```
 
-Run tests:
-```bash
-uv run pytest
-uv run pytest --cov=app
-```
-
-Live market data demo (terminal dashboard):
-```bash
-uv run market_data_demo.py
-```
-
-### Frontend (Next.js/TypeScript)
+**Frontend** (Next.js, TypeScript):
 
 ```bash
 cd frontend
 npm install
-npm run dev       # dev server at :3000
-npm run build     # static export
+npm run dev
 ```
 
----
+**Tests**:
 
-## Project Structure
-
-```
-finally/
-├── backend/          FastAPI app (uv project)
-│   ├── app/
-│   │   └── market/   Price simulator, Massive client, SSE stream
-│   └── tests/
-├── frontend/         Next.js static export
-├── scripts/          start/stop Docker wrappers
-├── test/             E2E tests (Playwright + docker-compose.test.yml)
-├── db/               Volume mount point (finally.db lives here at runtime)
-├── planning/         Architecture docs and agent contracts
-├── Dockerfile        Multi-stage build (Node → Python)
-└── .env.example
+```bash
+cd backend
+uv run pytest
 ```
 
----
+## Tech Stack
 
-## Default Portfolio
+| Layer | Technology |
+|---|---|
+| Backend | FastAPI, Python 3.12, uv |
+| Frontend | Next.js (static export), TypeScript, Tailwind CSS |
+| Database | SQLite (single file, volume-mounted) |
+| Real-time | Server-Sent Events (SSE) |
+| AI | LiteLLM → OpenRouter (Cerebras inference) |
+| Deployment | Single Docker container |
 
-On first run the app seeds:
-- **$10,000** virtual cash
-- **10 tickers** on the watchlist: AAPL, GOOGL, MSFT, AMZN, TSLA, NVDA, META, JPM, V, NFLX
+## Project Status
 
-Data persists across restarts via Docker volume (`finally-data`).
+| Component | Status |
+|---|---|
+| Market data (simulator + Polygon.io client + SSE) | Complete |
+| Backend API (portfolio, trades, watchlist, chat) | In progress |
+| Frontend UI | Planned |
+| Docker build + scripts | Planned |
+| E2E tests | Planned |
