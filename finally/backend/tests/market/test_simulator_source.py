@@ -1,6 +1,7 @@
 """Integration tests for SimulatorDataSource."""
 
 import asyncio
+from unittest.mock import patch
 
 import pytest
 
@@ -94,19 +95,23 @@ class TestSimulatorDataSource:
         await source.stop()
 
     async def test_exception_resilience(self):
-        """Test that simulator continues running after errors."""
+        """Test that the loop continues running after step() raises an exception."""
         cache = PriceCache()
         source = SimulatorDataSource(price_cache=cache, update_interval=0.05)
-
-        # Start with a valid ticker
         await source.start(["AAPL"])
 
-        # Wait for some updates
-        await asyncio.sleep(0.15)
+        # Inject repeated exceptions into step() to exercise the except handler
+        with patch.object(source._sim, "step", side_effect=RuntimeError("injected failure")):
+            await asyncio.sleep(0.2)  # Several ticks all raise
 
-        # Task should still be running
+        # Task must still be running — the except clause kept the loop alive
         assert source._task is not None
         assert not source._task.done()
+
+        # After the patch is removed, normal operation resumes
+        version_before = cache.version
+        await asyncio.sleep(0.2)
+        assert cache.version > version_before
 
         await source.stop()
 
