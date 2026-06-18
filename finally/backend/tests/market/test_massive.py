@@ -84,7 +84,7 @@ class TestMassiveDataSource:
         assert cache.get_price("AAPL") is None  # No update happened
 
     async def test_timestamp_conversion(self):
-        """Test that timestamps are converted from milliseconds to seconds."""
+        """Test that timestamps are converted from nanoseconds to seconds."""
         cache = PriceCache()
         source = MassiveDataSource(
             api_key="test-key",
@@ -94,14 +94,16 @@ class TestMassiveDataSource:
         source._tickers = ["AAPL"]
         source._client = MagicMock()  # Satisfy the _poll_once guard
 
-        mock_snapshots = [_make_snapshot("AAPL", 190.50, 1707580800000)]
+        # Real Massive API returns nanosecond Unix timestamps (19 digits)
+        timestamp_ns = 1707580800_000_000_000  # 2024-02-10T16:00:00Z in nanoseconds
+        mock_snapshots = [_make_snapshot("AAPL", 190.50, timestamp_ns)]
 
         with patch.object(source, "_fetch_snapshots", return_value=mock_snapshots):
             await source._poll_once()
 
         update = cache.get("AAPL")
         assert update is not None
-        assert update.timestamp == 1707580800.0  # Converted to seconds
+        assert update.timestamp == 1707580800.0  # Converted ns → seconds
 
     async def test_add_ticker(self):
         """Test adding a ticker."""

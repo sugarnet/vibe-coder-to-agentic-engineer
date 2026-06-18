@@ -67,7 +67,10 @@ class MassiveDataSource(MarketDataSource):
         ticker = ticker.upper().strip()
         if ticker not in self._tickers:
             self._tickers.append(ticker)
-            logger.info("Massive: added ticker %s (will appear on next poll)", ticker)
+            logger.info("Massive: added ticker %s, triggering immediate poll", ticker)
+            # Immediate poll so the cache has data for the new ticker right away,
+            # matching the behaviour of SimulatorDataSource.add_ticker().
+            await self._poll_once()
 
     async def remove_ticker(self, ticker: str) -> None:
         ticker = ticker.upper().strip()
@@ -99,8 +102,8 @@ class MassiveDataSource(MarketDataSource):
             for snap in snapshots:
                 try:
                     price = snap.last_trade.price
-                    # Massive timestamps are Unix milliseconds → convert to seconds
-                    timestamp = snap.last_trade.timestamp / 1000.0
+                    # Massive timestamps are Unix nanoseconds → convert to seconds
+                    timestamp = snap.last_trade.timestamp / 1_000_000_000
                     self._cache.update(
                         ticker=snap.ticker,
                         price=price,
