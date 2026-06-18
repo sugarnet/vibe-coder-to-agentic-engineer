@@ -1,312 +1,328 @@
-# Market Simulator
+# Market Data Simulator
 
-Approach and code structure for simulating realistic stock prices when `MASSIVE_API_KEY` is not set.
-
----
-
-## Overview
-
-The simulator uses **Geometric Brownian Motion (GBM)** to generate continuous, realistic-looking price paths. GBM is the standard stochastic process underlying Black-Scholes — prices can't go negative, produce lognormal returns, and drift over time. At 500ms ticks it generates sub-cent moves per step that accumulate naturally into visible intraday swings.
-
-Three layers of realism:
-
-1. **Per-ticker volatility** — TSLA bounces more than JPM
-2. **Correlated sector moves** — tech stocks move together; random Z's pass through a Cholesky decomposition
-3. **Random shock events** — ~0.1% chance per tick of a 2–5% sudden move for visual drama
+The simulator generates realistic-looking stock price movements using Geometric Brownian Motion (GBM) with correlated noise, occasional jump events, and configurable per-ticker parameters. It runs as an asyncio background task and writes to the shared `PriceCache` at ~500ms intervals.
 
 ---
 
-## GBM Mathematics
+## Why Geometric Brownian Motion
 
-The discrete GBM update rule for one time step:
-
-```
-S(t + dt) = S(t) × exp((μ - σ²/2) × dt + σ × √dt × Z)
-```
-
-| Symbol | Meaning |
-|--------|---------|
-| `S(t)` | Price at current step |
-| `μ` (mu) | Annualized drift (expected return), e.g. 0.05 = 5%/year |
-| `σ` (sigma) | Annualized volatility, e.g. 0.25 = 25%/year |
-| `dt` | Time step as fraction of a trading year |
-| `Z` | Standard normal random variable, N(0,1) |
-
-**Why the `σ²/2` correction?** GBM applies to log prices. The Itô correction `−σ²/2` makes the expected price match the drift `μ` (without it, Jensen's inequality would cause the mean to drift too fast).
-
-**Computing `dt`** for 500ms ticks:
+GBM is the standard model for equity prices in the Black-Scholes framework. A price evolves as:
 
 ```
-Trading year ≈ 252 days × 6.5 hours/day × 3600 s/hour = 5,896,800 seconds
-dt = 0.5 / 5,896,800 ≈ 8.48 × 10⁻⁸
+S(t + dt) = S(t) * exp((μ - σ²/2) * dt + σ * √dt * Z)
 ```
 
-This tiny `dt` produces moves on the order of:
+where:
+- `S(t)` — current price
+- `μ` (mu) — annualized drift (expected return)
+- `σ` (sigma) — annualized volatility
+- `dt` — time step (in years)
+- `Z` — standard normal random variable `N(0, 1)`
 
-```
-σ × √dt ≈ 0.25 × √(8.48e-8) ≈ 0.000073 (0.007% per tick)
-```
-
-For a $200 stock: ~$0.015 typical per-tick move. Over a simulated trading day (~47,000 ticks), this accumulates to realistic intraday ranges.
-
----
-
-## Correlated Moves
-
-Real stocks in the same sector move together. NVDA and MSFT tend to rise and fall on the same days. We model this with a **Cholesky decomposition** of a correlation matrix.
-
-**Why Cholesky?** Given `n` independent standard normals `Z_ind`, we want `n` correlated normals `Z_cor` with covariance matrix `C`:
-
-```
-L = cholesky(C)   # lower-triangular, L @ L.T == C
-Z_cor = L @ Z_ind
-```
-
-The resulting `Z_cor[i]` feeds into ticker `i`'s GBM step. Tickers with high correlation share similar random draws.
-
-**Correlation structure** used in FinAlly:
-
-| Pair | Correlation | Reason |
-|------|-------------|--------|
-| Tech × Tech | 0.6 | AAPL, GOOGL, MSFT, AMZN, META, NVDA, NFLX |
-| Finance × Finance | 0.5 | JPM, V |
-| TSLA × anything | 0.3 | TSLA is idiosyncratic |
-| Cross-sector | 0.3 | baseline market-wide correlation |
-| Unknown tickers | 0.3 | conservative default |
-
-The correlation matrix `C` is `n × n` with `C[i,i] = 1` and `C[i,j] = rho(ticker_i, ticker_j)`. Cholesky factorization requires positive semi-definiteness — our correlation values (all ≥ 0.3) guarantee this for the ticker sets we use.
-
----
-
-## Shock Events
-
-Every step, each ticker independently draws a uniform random number. If it falls below `event_probability` (default 0.001), a sudden move is applied:
+For a 500ms tick: `dt = 0.5 / (252 * 390 * 60 * 2) ≈ 0.5 / 7,862,400` trading seconds per year. In practice we convert to per-second units and scale by the tick size:
 
 ```python
-if random.random() < 0.001:
-    magnitude = random.uniform(0.02, 0.05)   # 2%–5%
-    direction = random.choice([-1, 1])
-    price *= (1 + magnitude * direction)
+dt = tick_seconds / (252 * 6.5 * 3600)  # fraction of a trading year
 ```
 
-With 10 tickers at 2 ticks/second:
-- Expected events per ticker: 1 every 500 seconds (~8 min)
-- Expected events across all tickers: ~1 every 50 seconds
+---
 
-This keeps the dashboard visually interesting without making prices unrealistic.
+## Correlated Price Moves
+
+Real stocks in the same sector move together. The simulator applies a **two-factor model**:
+- A **market factor** shared by all tickers (e.g., index-level move)
+- A **sector factor** shared by tickers in the same sector
+- An **idiosyncratic factor** unique to each ticker
+
+```
+Z_i = beta_market * Z_market + beta_sector * Z_sector_i + sqrt(1 - beta_market² - beta_sector²) * Z_idio_i
+```
+
+All `Z` are independent standard normals drawn per tick.
 
 ---
 
 ## Seed Prices and Per-Ticker Parameters
 
 ```python
-# backend/app/market/seed_prices.py
+# backend/market/simulator_config.py
+from dataclasses import dataclass
 
-SEED_PRICES: dict[str, float] = {
-    "AAPL": 190.00,
-    "GOOGL": 175.00,
-    "MSFT":  420.00,
-    "AMZN":  185.00,
-    "TSLA":  250.00,
-    "NVDA":  800.00,
-    "META":  500.00,
-    "JPM":   195.00,
-    "V":     280.00,
-    "NFLX":  600.00,
+@dataclass
+class TickerConfig:
+    seed_price: float   # starting price
+    mu: float           # annualized drift (e.g. 0.08 = 8% per year)
+    sigma: float        # annualized volatility (e.g. 0.30 = 30%)
+    sector: str         # for correlation grouping
+
+
+TICKER_CONFIGS: dict[str, TickerConfig] = {
+    "AAPL":  TickerConfig(seed_price=191.00, mu=0.10, sigma=0.28, sector="tech"),
+    "GOOGL": TickerConfig(seed_price=175.00, mu=0.09, sigma=0.26, sector="tech"),
+    "MSFT":  TickerConfig(seed_price=420.00, mu=0.10, sigma=0.25, sector="tech"),
+    "AMZN":  TickerConfig(seed_price=185.00, mu=0.12, sigma=0.30, sector="tech"),
+    "TSLA":  TickerConfig(seed_price=175.00, mu=0.08, sigma=0.55, sector="tech"),
+    "NVDA":  TickerConfig(seed_price=875.00, mu=0.15, sigma=0.50, sector="tech"),
+    "META":  TickerConfig(seed_price=490.00, mu=0.12, sigma=0.32, sector="tech"),
+    "JPM":   TickerConfig(seed_price=198.00, mu=0.07, sigma=0.22, sector="finance"),
+    "V":     TickerConfig(seed_price=275.00, mu=0.08, sigma=0.20, sector="finance"),
+    "NFLX":  TickerConfig(seed_price=640.00, mu=0.10, sigma=0.38, sector="media"),
 }
 
-TICKER_PARAMS: dict[str, dict[str, float]] = {
-    "AAPL":  {"sigma": 0.22, "mu": 0.05},
-    "GOOGL": {"sigma": 0.25, "mu": 0.05},
-    "MSFT":  {"sigma": 0.20, "mu": 0.05},
-    "AMZN":  {"sigma": 0.28, "mu": 0.05},
-    "TSLA":  {"sigma": 0.50, "mu": 0.03},  # High vol, lower expected return
-    "NVDA":  {"sigma": 0.40, "mu": 0.08},  # High vol, strong drift
-    "META":  {"sigma": 0.30, "mu": 0.05},
-    "JPM":   {"sigma": 0.18, "mu": 0.04},  # Low vol (bank)
-    "V":     {"sigma": 0.17, "mu": 0.04},  # Low vol (payments)
-    "NFLX":  {"sigma": 0.35, "mu": 0.05},
-}
-
-# Used for any ticker added dynamically that is not in the table above
-DEFAULT_PARAMS: dict[str, float] = {"sigma": 0.25, "mu": 0.05}
-
-CORRELATION_GROUPS: dict[str, set[str]] = {
-    "tech":    {"AAPL", "GOOGL", "MSFT", "AMZN", "META", "NVDA", "NFLX"},
-    "finance": {"JPM", "V"},
-}
+# Market-wide and sector correlation betas
+BETA_MARKET = 0.4   # all tickers move with the market factor
+BETA_SECTOR = 0.3   # tickers in the same sector share a sector factor
+# idiosyncratic beta = sqrt(1 - BETA_MARKET² - BETA_SECTOR²) ≈ 0.80
 ```
 
-**Tickers not in `SEED_PRICES`** start at a random price between $50 and $300.
+For unknown tickers (user-added), the simulator falls back to generic parameters:
 
-**`sigma` calibration**: `sigma=0.50` for TSLA means 50% annualized volatility. Over a simulated trading day (252 × 6.5h worth of ticks), this produces roughly the right intraday range relative to a quieter stock like V at 17%.
+```python
+DEFAULT_CONFIG = TickerConfig(seed_price=100.00, mu=0.08, sigma=0.30, sector="unknown")
+```
+
+---
+
+## Random Jump Events
+
+To add drama, each tick has a small probability of a sudden price jump. Jumps simulate earnings surprises, news events, and circuit breakers.
+
+```python
+JUMP_PROBABILITY = 0.002   # 0.2% chance per tick per ticker (~1 event per 1000 ticks ≈ 8 minutes)
+JUMP_SIZE_MIN = 0.02        # minimum 2% move
+JUMP_SIZE_MAX = 0.06        # maximum 6% move
+```
+
+When a jump fires:
+1. Direction is chosen uniformly at random (up or down).
+2. Magnitude is drawn uniformly from `[JUMP_SIZE_MIN, JUMP_SIZE_MAX]`.
+3. The jump is applied multiplicatively on top of the normal GBM step.
 
 ---
 
 ## Implementation
 
-Two classes: `GBMSimulator` (the math engine) and `SimulatorDataSource` (the async wrapper that uses it).
-
-### GBMSimulator
-
 ```python
-# backend/app/market/simulator.py
+# backend/market/simulator.py
+import asyncio
+import logging
+import math
+import random
+from datetime import datetime
 
-import math, random
-import numpy as np
-from .seed_prices import SEED_PRICES, TICKER_PARAMS, DEFAULT_PARAMS, CORRELATION_GROUPS
+from .base import MarketDataProvider
+from .cache import PriceCache
+from .models import PriceUpdate
+from .simulator_config import (
+    TICKER_CONFIGS,
+    DEFAULT_CONFIG,
+    BETA_MARKET,
+    BETA_SECTOR,
+    JUMP_PROBABILITY,
+    JUMP_SIZE_MIN,
+    JUMP_SIZE_MAX,
+)
 
-class GBMSimulator:
-    """Correlated GBM price simulator for multiple tickers.
+logger = logging.getLogger(__name__)
 
-    Call step() every interval to get the next price for each ticker.
-    Add/remove tickers at any time — the correlation matrix is rebuilt automatically.
+TRADING_SECONDS_PER_YEAR = 252 * 6.5 * 3600  # ~5,896,800
+
+
+class SimulatorMarketData(MarketDataProvider):
     """
-
-    TRADING_SECONDS_PER_YEAR = 252 * 6.5 * 3600  # 5,896,800
-    DEFAULT_DT = 0.5 / TRADING_SECONDS_PER_YEAR  # ~8.48e-8
+    GBM-based stock price simulator with correlated sector moves and jump events.
+    Writes PriceUpdate objects to PriceCache at tick_interval seconds.
+    """
 
     def __init__(
         self,
+        cache: PriceCache,
         tickers: list[str],
-        dt: float = DEFAULT_DT,
-        event_probability: float = 0.001,
+        tick_interval: float = 0.5,
     ) -> None:
-        self._dt = dt
-        self._event_prob = event_probability
-        self._tickers: list[str] = []
+        self._cache = cache
+        self._tick_interval = tick_interval
+        self._task: asyncio.Task | None = None
+
+        # Current prices per ticker (mutable state)
         self._prices: dict[str, float] = {}
-        self._params: dict[str, dict[str, float]] = {}
-        self._cholesky: np.ndarray | None = None
+        # Per-ticker config (includes unknowns with DEFAULT_CONFIG)
+        self._configs: dict[str, object] = {}
 
         for ticker in tickers:
-            self._add_ticker_internal(ticker)
-        self._rebuild_cholesky()
+            self._init_ticker(ticker)
 
-    def step(self) -> dict[str, float]:
-        """Advance all tickers by one dt. Returns {ticker: new_price}."""
-        n = len(self._tickers)
-        if n == 0:
-            return {}
-
-        z_ind = np.random.standard_normal(n)
-        z = self._cholesky @ z_ind if self._cholesky is not None else z_ind
-
-        result: dict[str, float] = {}
-        for i, ticker in enumerate(self._tickers):
-            mu = self._params[ticker]["mu"]
-            sigma = self._params[ticker]["sigma"]
-
-            drift     = (mu - 0.5 * sigma**2) * self._dt
-            diffusion = sigma * math.sqrt(self._dt) * z[i]
-            self._prices[ticker] *= math.exp(drift + diffusion)
-
-            # Random shock event
-            if random.random() < self._event_prob:
-                shock = random.uniform(0.02, 0.05) * random.choice([-1, 1])
-                self._prices[ticker] *= (1 + shock)
-
-            result[ticker] = round(self._prices[ticker], 2)
-
-        return result
+    def _init_ticker(self, ticker: str) -> None:
+        cfg = TICKER_CONFIGS.get(ticker, DEFAULT_CONFIG)
+        self._configs[ticker] = cfg
+        self._prices[ticker] = cfg.seed_price
 
     def add_ticker(self, ticker: str) -> None:
         if ticker not in self._prices:
-            self._add_ticker_internal(ticker)
-            self._rebuild_cholesky()
+            self._init_ticker(ticker)
 
     def remove_ticker(self, ticker: str) -> None:
-        if ticker in self._prices:
-            self._tickers.remove(ticker)
-            del self._prices[ticker]
-            del self._params[ticker]
-            self._rebuild_cholesky()
+        self._prices.pop(ticker, None)
+        self._configs.pop(ticker, None)
 
-    def get_price(self, ticker: str) -> float | None:
-        return self._prices.get(ticker)
+    async def start(self) -> None:
+        self._task = asyncio.create_task(self._tick_loop())
+        logger.info("SimulatorMarketData started, tick_interval=%.2fs", self._tick_interval)
 
-    def get_tickers(self) -> list[str]:
-        return list(self._tickers)
+    async def stop(self) -> None:
+        if self._task:
+            self._task.cancel()
+            try:
+                await self._task
+            except asyncio.CancelledError:
+                pass
 
-    # --- Internals ---
+    async def get_price(self, ticker: str) -> PriceUpdate | None:
+        return await self._cache.get(ticker)
 
-    def _add_ticker_internal(self, ticker: str) -> None:
-        self._tickers.append(ticker)
-        self._prices[ticker] = SEED_PRICES.get(ticker, random.uniform(50.0, 300.0))
-        self._params[ticker] = dict(TICKER_PARAMS.get(ticker, DEFAULT_PARAMS))
+    async def get_prices(self, tickers: list[str]) -> dict[str, PriceUpdate]:
+        all_prices = await self._cache.get_all()
+        return {t: all_prices[t] for t in tickers if t in all_prices}
 
-    def _rebuild_cholesky(self) -> None:
-        """Rebuild Cholesky of the correlation matrix. O(n²), n < 50."""
-        n = len(self._tickers)
-        if n <= 1:
-            self._cholesky = None
-            return
+    async def _tick_loop(self) -> None:
+        while True:
+            await self._tick()
+            await asyncio.sleep(self._tick_interval)
 
-        corr = np.eye(n)
-        for i in range(n):
-            for j in range(i + 1, n):
-                rho = self._pairwise_correlation(self._tickers[i], self._tickers[j])
-                corr[i, j] = rho
-                corr[j, i] = rho
+    async def _tick(self) -> None:
+        dt = self._tick_interval / TRADING_SECONDS_PER_YEAR
 
-        self._cholesky = np.linalg.cholesky(corr)
+        # Draw shared market factor
+        z_market = random.gauss(0, 1)
 
-    @staticmethod
-    def _pairwise_correlation(t1: str, t2: str) -> float:
-        tech    = CORRELATION_GROUPS["tech"]
-        finance = CORRELATION_GROUPS["finance"]
+        # Group sector factors
+        sectors = {cfg.sector for cfg in self._configs.values()}
+        z_sector: dict[str, float] = {s: random.gauss(0, 1) for s in sectors}
 
-        if t1 == "TSLA" or t2 == "TSLA":
-            return 0.3
-        if t1 in tech and t2 in tech:
-            return 0.6
-        if t1 in finance and t2 in finance:
-            return 0.5
-        return 0.3  # cross-sector and unknown tickers
+        updates: list[PriceUpdate] = []
+        now = datetime.utcnow()
+
+        for ticker, prev_price in list(self._prices.items()):
+            cfg = self._configs[ticker]
+
+            # Idiosyncratic component
+            beta_idio = math.sqrt(max(0.0, 1.0 - BETA_MARKET**2 - BETA_SECTOR**2))
+            z_i = (
+                BETA_MARKET * z_market
+                + BETA_SECTOR * z_sector[cfg.sector]
+                + beta_idio * random.gauss(0, 1)
+            )
+
+            # GBM step
+            drift = (cfg.mu - 0.5 * cfg.sigma**2) * dt
+            diffusion = cfg.sigma * math.sqrt(dt) * z_i
+            new_price = prev_price * math.exp(drift + diffusion)
+
+            # Optional jump event
+            if random.random() < JUMP_PROBABILITY:
+                jump_size = random.uniform(JUMP_SIZE_MIN, JUMP_SIZE_MAX)
+                direction = 1 if random.random() > 0.5 else -1
+                new_price *= 1 + direction * jump_size
+                logger.debug("Jump event: %s %.2f%%", ticker, direction * jump_size * 100)
+
+            # Clamp to prevent degenerate prices (< $1 or > 10x seed)
+            seed = TICKER_CONFIGS.get(ticker, DEFAULT_CONFIG).seed_price
+            new_price = max(1.0, min(new_price, seed * 10))
+
+            change = new_price - prev_price
+            change_pct = (change / prev_price) * 100 if prev_price else 0.0
+
+            self._prices[ticker] = new_price
+            updates.append(PriceUpdate(
+                ticker=ticker,
+                price=round(new_price, 4),
+                prev_price=round(prev_price, 4),
+                change=round(change, 4),
+                change_pct=round(change_pct, 4),
+                timestamp=now,
+            ))
+
+        await self._cache.update_many(updates)
 ```
 
-### SimulatorDataSource
+---
 
-The async adapter that runs `GBMSimulator.step()` in a loop and writes results to `PriceCache`. See `MARKET_INTERFACE.md` for the full implementation.
+## Behavior Summary
+
+| Property | Value |
+|----------|-------|
+| Tick interval | 500ms |
+| Price model | Geometric Brownian Motion |
+| Correlation | Market + sector two-factor model |
+| Jump events | ~0.2% chance per ticker per tick |
+| Jump magnitude | 2–6% |
+| Unknown tickers | Supported via `DEFAULT_CONFIG` (seed $100, σ=30%) |
+| Price floor | $1.00 |
+| Price ceiling | 10× seed price |
+| No external deps | Runs fully in-process; no network calls |
+
+---
+
+## Simulator vs. Real Data — What Stays the Same
+
+Because both `SimulatorMarketData` and `MassiveMarketData` implement `MarketDataProvider` and write identical `PriceUpdate` objects to `PriceCache`, **every layer above the provider is unaffected by which implementation is running**:
+
+- SSE stream endpoint — unchanged
+- Portfolio P&L calculation — unchanged  
+- Frontend price flash animation — unchanged
+- Unit tests for portfolio math — can use simulator directly as a controlled fixture
+
+---
+
+## Testing the Simulator
 
 ```python
-class SimulatorDataSource(MarketDataSource):
-    async def start(self, tickers: list[str]) -> None:
-        self._sim = GBMSimulator(tickers=tickers)
-        # Seed cache before starting the loop so SSE has data immediately
-        for ticker in tickers:
-            price = self._sim.get_price(ticker)
-            if price is not None:
-                self._cache.update(ticker=ticker, price=price)
-        self._task = asyncio.create_task(self._run_loop())
+# backend/tests/test_simulator.py
+import asyncio
+import pytest
+from market.cache import PriceCache
+from market.simulator import SimulatorMarketData
 
-    async def _run_loop(self) -> None:
-        while True:
-            prices = self._sim.step()
-            for ticker, price in prices.items():
-                self._cache.update(ticker=ticker, price=price)
-            await asyncio.sleep(self._interval)  # 0.5 seconds
+@pytest.mark.asyncio
+async def test_prices_change_over_time():
+    cache = PriceCache()
+    sim = SimulatorMarketData(cache=cache, tickers=["AAPL", "GOOGL"])
+    await sim.start()
+    await asyncio.sleep(1.1)   # let 2 ticks run
+    await sim.stop()
+
+    prices = await cache.get_all()
+    assert "AAPL" in prices
+    assert "GOOGL" in prices
+    assert prices["AAPL"].price > 0
+    # Prices should have diverged from seed after 2 ticks
+    # (probabilistically true; GBM with σ=0.28 almost never stays flat)
+
+
+@pytest.mark.asyncio
+async def test_add_unknown_ticker():
+    cache = PriceCache()
+    sim = SimulatorMarketData(cache=cache, tickers=["AAPL"])
+    sim.add_ticker("PLTR")   # not in TICKER_CONFIGS
+    await sim.start()
+    await asyncio.sleep(0.6)
+    await sim.stop()
+
+    prices = await cache.get_all()
+    assert "PLTR" in prices
+    # Should start near DEFAULT_CONFIG.seed_price = 100
+    assert 90 < prices["PLTR"].price < 110
+
+
+@pytest.mark.asyncio
+async def test_price_stays_above_floor():
+    """Price should never go below $1 regardless of noise."""
+    cache = PriceCache()
+    sim = SimulatorMarketData(cache=cache, tickers=["AAPL"], tick_interval=0.01)
+    await sim.start()
+    await asyncio.sleep(2.0)   # ~200 ticks
+    await sim.stop()
+
+    prices = await cache.get_all()
+    assert prices["AAPL"].price >= 1.0
 ```
-
----
-
-## File Structure
-
-```
-backend/app/market/
-  simulator.py     # GBMSimulator class + SimulatorDataSource
-  seed_prices.py   # SEED_PRICES, TICKER_PARAMS, DEFAULT_PARAMS, CORRELATION_GROUPS
-```
-
-`seed_prices.py` holds only constants. `simulator.py` holds all logic. The two classes are in the same file because `SimulatorDataSource` is a thin wrapper over `GBMSimulator` with no reason to separate them.
-
----
-
-## Behavior Notes
-
-- **Prices never go negative**: GBM is multiplicative (`exp()` is always positive).
-- **Cholesky rebuild cost**: O(n²) but n < 50 tickers in practice; negligible.
-- **Dynamic tickers**: Any string can be added as a ticker. Unknown tickers start at a random $50–$300 price with default volatility params.
-- **`dt` is not wall-clock time**: It's a fraction of a trading year. The simulator runs at real-time 500ms intervals, but the financial model treats each step as a ~8.5e-8 year. This means the simulated volatility matches the real annualized figures (TSLA ≈ 50%/year) while producing visually appropriate tick-to-tick moves.
-- **Correlation matrix validity**: All off-diagonal entries are ≥ 0.3 and ≤ 0.6. This range is well within positive semi-definiteness bounds; Cholesky will not fail.
-- **Shock events are independent**: The correlation matrix applies only to the GBM diffusion term. Shock events use `random.random()` independently per ticker — a shock on AAPL does not trigger one on MSFT.
